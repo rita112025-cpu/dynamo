@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from core import TOOL_VERSION
-from core.csv_report import COLUMNS, safe_text, write_findings_csv
-from core.findings import Finding, Status
+from mep_toolkit import TOOL_VERSION
+from mep_toolkit.csv_report import COLUMNS, safe_text, write_findings_csv
+from mep_toolkit.findings import Finding, Status
 
 TAIPEI = timezone(timedelta(hours=8))
 RUN_TIME = datetime(2026, 11, 9, 10, 30, 0, tzinfo=TAIPEI)

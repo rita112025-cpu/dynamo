@@ -1,7 +1,7 @@
 import dataclasses
 import unittest
 
-from core.findings import Finding, Status
+from mep_toolkit.findings import Finding, Status
 
 
 class FindingTest(unittest.TestCase):
