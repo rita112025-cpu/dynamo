@@ -191,6 +191,80 @@ class EmbeddedContentTest(unittest.TestCase):
         self.assertEqual(set(make_dyn.MODULE_ORDER), set(n for n, _ in make_dyn.load_modules()))
 
 
+# Keys of the Python node in a real Dynamo 3.3 workspace saved in this project
+# (source: G:\Dynamo\批次填參數\BatchFillScadaParams.dyn, read only; the path is not used by tests).
+# Stored here as a constant so the test does not depend on any real path.
+REFERENCE_PYTHON_NODE_KEYS = frozenset({
+    "Code", "ConcreteType", "Description", "Engine", "Id", "Inputs",
+    "NodeType", "Outputs", "Replication", "VariableInputPorts",
+})
+
+
+class NodeFormatTest(unittest.TestCase):
+    def setUp(self):
+        self.text, _, _, _ = make_dyn.build_text()
+        self.data = json.loads(self.text)
+
+    def test_python_node_keys_match_the_reference_dynamo_file(self):
+        py = [n for n in self.data["Nodes"] if n.get("NodeType") == "PythonScriptNode"]
+        self.assertEqual(len(py), 1)
+        self.assertEqual(frozenset(py[0].keys()), REFERENCE_PYTHON_NODE_KEYS)
+        self.assertNotIn("EngineName", py[0])
+
+    def test_input_nodes_are_not_set_as_inputs_because_no_reference_exists(self):
+        # No Dynamo 3.3 file in this project sets an input node (IsSetAsInput), so the format
+        # is not guessed. Documented in docs/dyn_build.md.
+        views = [v for v in self.data["View"]["NodeViews"] if "StringInput" in v.get("Name", "") or
+                 v.get("Name") in ("快照 JSON 完整路徑（必填）", "輸出資料夾完整路徑（必填，須已存在）")]
+        self.assertEqual(len(views), 2)
+        self.assertTrue(all(v["IsSetAsInput"] is False for v in views))
+        self.assertEqual(self.data["Inputs"], [])
+
+
+class StrictRuleTest(unittest.TestCase):
+    """Module sources: no dynamic code and no dynamic attribute access."""
+
+    def test_dynamic_calls_are_caught(self):
+        for snippet in (
+            'getattr(doc, "Save")()\n',
+            'getattr(doc, name_variable)\n',
+            'getattr(doc)\n',
+            'setattr(doc, "SaveAs", 1)\n',
+            'hasattr(doc, "SynchronizeWithCentral")\n',
+            'builtins.getattr(x, "Save")\n',
+            '__import__("clr")\n',
+            'import importlib\nimportlib.import_module("clr")\n',
+            'import builtins\n',
+            'eval("1 + 1")\n',
+            'exec("x = 1")\n',
+            'code = compile("x", "f", "exec")\n',
+            'f = getattr\n',
+        ):
+            with self.subTest(snippet=snippet):
+                self.assertTrue(forbidden_uses(snippet, strict=True), "not caught")
+
+    def test_plain_names_and_mentions_are_not_flagged(self):
+        for snippet in (
+            'getattr(x, "name")\n',
+            'hasattr(x, "Name")\n',
+            're.compile(r"a+")\n',             # regex constructor, not the builtin compile()
+            'label = "eval exec compile getattr"\n',
+            '# getattr(x, n); eval(s); __import__("clr")\n',
+            '"""exec compile __import__ getattr(x, n)"""\n',
+        ):
+            with self.subTest(snippet=snippet):
+                self.assertEqual(forbidden_uses(snippet, strict=True), [])
+
+    def test_base_rules_do_not_apply_the_strict_builtins(self):
+        # The node template uses exec(compile(...)) to register modules; base mode allows it.
+        self.assertEqual(forbidden_uses('exec(compile("x", "f", "exec"))\n', strict=False), [])
+
+    def test_shipped_modules_pass_the_strict_rules(self):
+        for name, source in make_dyn.load_modules():
+            with self.subTest(module=name):
+                self.assertEqual(forbidden_uses(source, strict=True), [])
+
+
 @unittest.skipUnless(HAVE_PY39, "Dynamo embedded Python 3.9.12 not found")
 class NodeRunTest(Case):
     def setUp(self):

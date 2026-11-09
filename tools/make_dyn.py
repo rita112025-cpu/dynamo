@@ -147,7 +147,7 @@ def build_dyn_dict(program: str, core: str, dict_hash: str) -> Dict:
                            "Id": _gid(seed + ":connector:" + key), "IsHidden": "False"})
     py_id = _gid(seed + ":python")
     py = {"ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
-          "Code": program, "Engine": "CPython3", "EngineName": "CPython3",
+          "Code": program, "Engine": "CPython3",
           "VariableInputPorts": True, "Id": py_id, "NodeType": "PythonScriptNode",
           "Inputs": py_inputs, "Outputs": [_port(seed + ":python:out", "OUT", "Result")],
           "Replication": "Disabled", "Description": "Completeness check of SCADA parameters (embedded)."}
@@ -196,7 +196,7 @@ def build_text(modules=None, dictionary_text=None) -> Tuple[str, str, str, str]:
     modules = load_modules() if modules is None else modules
     dictionary_text = load_dictionary_text() if dictionary_text is None else dictionary_text
     for name, source in modules:
-        assert_no_forbidden(source, name)
+        assert_no_forbidden(source, name, strict=True)  # modules: strict rules
     program, core, dict_hash = render_program(modules, dictionary_text)
     assert_no_forbidden(program, "node program")
     dyn = build_dyn_dict(program, core, dict_hash)
