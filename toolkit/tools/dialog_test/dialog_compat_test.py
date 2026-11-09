@@ -3,6 +3,8 @@
 # (file, then folder) and reports what happened. Generated into a .dyn by make_dialog_test_dyn.py.
 #
 # IN[0]  mode: blank or 'no-owner' = no owner window; 'owner' = the Revit main window as owner.
+#        The owner is applied ONLY on the DIRECT route (dialog shown on Dynamo's own thread).
+#        The FALLBACK route (new STA thread) never uses an owner window.
 # OUT    lines for the Watch node.
 import clr
 import ctypes
@@ -109,57 +111,60 @@ def _path(dlg, kind):
 
 
 def _attempt(kind, owner, box=None):
-    """Returns (status, path, exception). status: OK, CANCEL or EXC."""
+    """Returns (status, path, exception, returned). status: OK, CANCEL or EXC."""
     try:
         dlg = _make(kind)
         try:
             result = dlg.ShowDialog(owner) if owner is not None else dlg.ShowDialog()
+            returned = str(result)
             if box is not None:
                 box["apt"] = str(Thread.CurrentThread.GetApartmentState())
             if result == DialogResult.OK:
-                return "OK", _path(dlg, kind), None
-            return "CANCEL", None, None
+                return "OK", _path(dlg, kind), None, returned
+            return "CANCEL", None, None, returned
         finally:
             dlg.Dispose()
     except Exception as ex:
         if box is not None:
             box["apt"] = str(Thread.CurrentThread.GetApartmentState())
-        return "EXC", None, ex
+        return "EXC", None, ex, "EXCEPTION"
 
 
 def _is_sta_error(ex):
     return "ThreadStateException" in type(ex).__name__ or "ThreadStateException" in str(ex)
 
 
-def _run_sta(kind, owner):
+def _run_sta(kind):
+    """FALLBACK route: a new STA thread. Never receives an owner window (cross-thread owner is not used)."""
     box = {}
 
     def work():
-        box["r"] = _attempt(kind, owner, box)
+        box["r"] = _attempt(kind, None, box)
 
     worker = Thread(ThreadStart(work))
     worker.SetApartmentState(ApartmentState.STA)
     worker.Start()
     worker.Join()
-    return box.get("r", ("EXC", None, Exception("STA worker returned no result"))), box.get("apt")
+    return box.get("r", ("EXC", None, Exception("STA worker returned no result"), "NONE")), box.get("apt")
 
 
 def _dialog(kind, owner, label):
-    """Runs one dialog. Returns (status, path, fallback_used). Writes its result lines."""
-    status, path, ex = _attempt(kind, owner)
+    """Runs one dialog. Returns (status, path, route, owner_applied). Writes its lines."""
+    status, path, ex, returned = _attempt(kind, owner)
+    route = "DIRECT"
+    applied = owner is not None
     if status == "EXC" and _is_sta_error(ex):
-        say("%s: EXCEPTION %s: %s (not STA) -> trying FALLBACK in a new STA thread" % (
+        say("%s: EXCEPTION %s: %s (not STA) -> FALLBACK route, new STA thread, NO owner window" % (
             label, type(ex).__name__, str(ex)[:300]))
-        (status, path, ex), apt = _run_sta(kind, owner)
+        route = "FALLBACK"
+        applied = False
+        (status, path, ex, returned), apt = _run_sta(kind)
         say("%s: FALLBACK thread apartment state = %s" % (label, apt))
-        if status == "EXC":
-            say("%s: FALLBACK EXCEPTION %s: %s" % (label, type(ex).__name__, str(ex)[:300]))
-            return "EXC", None, True
-        say("%s: FALLBACK %s" % (label, status))
-        return status, path, True
     if status == "EXC":
         say("%s: EXCEPTION %s: %s" % (label, type(ex).__name__, str(ex)[:300]))
-    return status, path, False
+    say("%s: route=%s | owner applied=%s | ShowDialog returned=%s | status=%s" % (
+        label, route, "yes" if applied else "no", returned, status))
+    return status, path, route, applied
 
 
 def _make_owner():
@@ -168,7 +173,7 @@ def _make_owner():
     try:
         window = NativeWindow()
         window.AssignHandle(MAIN_HANDLE)
-        say("owner window: NativeWindow assigned to MainWindowHandle")
+        say("owner window: NativeWindow assigned to MainWindowHandle (used on DIRECT route only)")
         return window
     except Exception as ex:
         say("owner window: EXCEPTION %s: %s -> continuing with NO owner" % (type(ex).__name__, str(ex)[:300]))
@@ -180,6 +185,7 @@ def _release(window):
         return
     try:
         window.ReleaseHandle()
+        say("owner window: released")
     except Exception as ex:
         say("owner release: EXCEPTION %s: %s" % (type(ex).__name__, str(ex)[:300]))
 
@@ -188,8 +194,7 @@ def _release(window):
 say("== dialogs (mode: %s) ==" % (MODE or "no-owner"))
 OWNER = _make_owner()
 try:
-    status, path, fallback = _dialog("file", OWNER, "dialog 1 (file)")
-    say("dialog 1 result: %s%s" % (status, " (FALLBACK)" if fallback else ""))
+    status, path, route, applied = _dialog("file", OWNER, "dialog 1 (file)")
     FG_AFTER_1 = _safe("foreground after dialog 1", _foreground)
     say("foreground window after dialog 1: " + str(FG_AFTER_1) + " | same as before: " + str(FG_AFTER_1 == FG_BEFORE))
     if status == "CANCEL":
@@ -202,8 +207,7 @@ try:
             say("INVALID FILE: not an existing file")
         else:
             say("file selected: " + path + " (extension ok, isfile True)")
-            status2, path2, fallback2 = _dialog("folder", OWNER, "dialog 2 (folder)")
-            say("dialog 2 result: %s%s" % (status2, " (FALLBACK)" if fallback2 else ""))
+            status2, path2, route2, applied2 = _dialog("folder", OWNER, "dialog 2 (folder)")
             if status2 == "CANCEL":
                 say("CANCELLED: folder dialog")
             elif status2 == "OK":
@@ -214,4 +218,5 @@ try:
 finally:
     _release(OWNER)
 
+say("node reached the last line of the script: yes")
 say("NO FILES WRITTEN; NO REVIT OBJECTS TOUCHED")
