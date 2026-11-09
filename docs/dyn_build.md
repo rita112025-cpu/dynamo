@@ -1,6 +1,8 @@
 # 完整度檢查 Dynamo 節點（建置說明與驗收清單）
 
-狀態：**程式與自動測試已完成；Dynamo 實機載入與執行尚未驗證，待使用者在 Dynamo 確認。**
+狀態：**清單 1–4、6 已通過（2026-11-09 上午，使用者在 Revit 2025.5 + Dynamo 3.3.2.11986 中於空白專案「專案1」執行；產物 `out/完整度檢查_20261109-104100.dyn`，SHA-256 `b6143d78084f041f6cc34c811fe72cf451215f1ac17f904a1c18aff4bb82e4a5`，使用者未存檔，事後雜湊仍相同）。清單 5 未做。**
+
+注意：這次只驗證了「快照 JSON → 完整度檢查 → CSV」的路徑，輸入是**假快照**。**不得寫成「Revit 模型檢查已驗證」。**
 
 ## 這是什麼
 
@@ -79,27 +81,36 @@ python tools/make_dyn.py -o <資料夾>  # 指定資料夾（不可是既有的 
 | 第二次執行不覆寫第一次的輸出 | `test_second_run_never_overwrites_the_first_output` |
 | 竄改嵌入的核心或字典 → 自檢拒絕執行 | `test_tampered_*` |
 
-## 手動驗收清單（待使用者在 Revit 2025 + Dynamo 3.3 中執行）
+## 手動驗收清單與結果（Revit 2025.5 + Dynamo 3.3.2.11986，2026-11-09 上午）
 
-以下項目**未在本專案內驗證**，請使用者逐項確認並記錄結果：
+使用者於空白專案「專案1」執行。
 
-- [ ] 1. 在 Revit 2025 的 Dynamo 3.3 中開啟 `out/完整度檢查_<時間戳>.dyn`，無載入錯誤。
-- [ ] 2. 確認 Python 節點的引擎為 CPython3，且節點可執行（Dynamo 版本號會在 .dyn 中記錄為 3.3.2.11986，請確認實際版本）。
-- [ ] 3. 兩個字串節點留空時執行：Watch 或錯誤訊息顯示「NOT RUN」並指出 IN[0]／IN[1]。
-- [ ] 4. 以**假快照**（例如 `examples/sample_snapshot.json`，v2）填入 IN[0]，IN[1] 指向一個已存在的測試資料夾，執行：
-  - [ ] 4a. Watch 顯示工具版本與兩個 SHA-256，與 `out/` 中建置時的紀錄一致（見 `python tools/make_dyn.py` 的輸出）。
-  - [ ] 4b. 產生兩份 CSV，內容與 `examples/sample_completeness_*.csv` 的規則一致（列數：結果 17、範圍 10）。
-  - [ ] 4c. 再執行一次：第一次的 CSV 未被改動。
-- [ ] 5. 竄改測試（可選）：用文字編輯器改動 .dyn 內的核心原始碼一個字元後執行，應被自檢拒絕。
-- [ ] 6. 確認節點未呼叫任何 Revit 文件物件（本節點設計上不會；可由程式碼 AST 測試佐證，但實機行為需使用者確認）。
+- [x] 1. 開啟 `out/完整度檢查_20261109-104100.dyn`，載入無錯誤（截圖）。Dynamo 日誌僅有既有的 AlsoKnownAs InvalidOperationException 啟動雜訊（前日日誌亦有），與此檔無關。
+- [x] 2. Python 節點引擎為 CPython3（節點標示 CPython3）。實際 Dynamo 版本 3.3.2.11986，與 .dyn 記錄一致。
+- [x] 3. 兩個字串節點留空時執行：警告「Exception : NOT RUN: fill in IN[0] with the full path of the snapshot JSON.」，回溯行號 116 / 72 與範本一致，Result 為 null，未產生任何檔案。
+- [x] 4. 以**假快照**（`examples/sample_snapshot.json`，v2，15 個元件）填入 IN[0]，IN[1] 指向一個已存在的測試資料夾，執行通過：
+  - [x] 4a. Watch 顯示工具版本、核心 SHA-256 `3b96f7c5…8fc5`、字典 SHA-256 `586d810c…24b1`、self-check OK、15 個元件、17 筆結果、未涵蓋品類。
+  - [x] 4b. 產生兩份 CSV（結果 17 列、範圍 10 列）。審核方以核心、同一輸入與同一執行時間重算，兩份 CSV 逐位元組相同。
+  - [ ] 4c. 再執行一次：第一次的 CSV 未被改動。（本次紀錄未包含此項；自動測試 `test_second_run_never_overwrites_the_first_output` 已涵蓋。）
+- [ ] 5. 竄改測試（可選）：**未做**。Dynamo 內未執行；已在 Python 3.9.12 自動測試與審核方獨立測試中驗證自檢拒絕。
+- [x] 6. 節點未動 Revit 文件（設計上不碰文件；使用者在空白專案執行）。
 
 ## 未驗證（請勿當成已驗證）
 
-- Dynamo 3.3 實際載入此 .dyn、CPython3 節點執行（僅以內建 Python 3.9.12 的獨立程序驗證）。
-- 套件內嵌模組在 Dynamo 節點中以 `sys.modules` 註冊後的行為（僅於獨立程序驗證）。
-- 快照契約的實際來源（Revit reader 尚未實作，快照目前為假資料）。
+以下項目**尚未驗證**，照實記錄：
+
+- 讀取 Revit 模型的 reader 尚未實作；快照契約未經真實 Revit 資料驗證。本次只用假快照。
+- `IsReadOnly` 判定方式未實測。
+- 用 Excel 開啟 CSV 未驗證。
+- 清單 5 竄改測試未在 Dynamo 內做（僅 Python 3.9.12 自動測試與審核方獨立測試驗證）。
+- Dynamo Player 未設為輸入（見上文「輸入」）。
+- 適用族群（`OST_ElectricalEquipment` 且名稱含 `SCADA_機櫃`）為推定，未在 Revit 內確認。
+- 三個淨距參數（前方／後方淨距、淨距依據）仍待確認、不檢查。
+- 2500 mm 條款原文待核對；50 mm 與 1 mm 為提案值。
 - 共用參數檔版次（審核方所述 10/28 版，本次只核對檔案雜湊）。
-- 規範值（50 mm、1 mm、2500 mm）仍為暫定值，且不在本節點的判定範圍（M4 才使用）。
+- 規範值（50 mm、1 mm、2500 mm）不在本節點的判定範圍（M4 才使用）。
+
+已證實（2026-11-09 Dynamo 實機）：Dynamo 3.3.2 載入此 .dyn；CPython3 節點中嵌入模組註冊並執行，輸出與核心一致。
 
 ## 第二輪（EngineName、嚴格 AST 規則、輸入格式）的結果
 
