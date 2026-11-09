@@ -21,6 +21,9 @@
 - 「沒有問題」（examined > 0，fail = 0）和「沒有檢查」（examined = 0，且必須有 `note` 說明原因）因此可以區分。
 - 模型層級的檢查（`element_id` 空白）：`examined = 1`，恰好一筆結果。
 - 輸出器在以下情況拒絕寫入、不留檔：結果的檢查項目沒有對應範圍；同一檢查項目有兩筆範圍；元件層級檢查的結果筆數不等於 `examined`（漏送或同一元件送兩筆）；模型層級與元件層級混在同一檢查；`examined > 0` 卻沒有任何結果。
+- **完整性只在走 `write_scope_csv` 時成立**；`write_findings_csv` 不驗證完整性。
+- 同一元件有多個原因時合併成一筆 Finding。
+- 大模型每元件每檢查一列（含 PASS），結果檔會很大；目前採此設計，是否接受由使用者決定。
 - 計數口徑（例如「設備編號重複」：每個涉及的元件各一筆 FAIL）見 [docs/unverified_policy.md](docs/unverified_policy.md)。
 
 ## 讀回 CSV 的注意事項

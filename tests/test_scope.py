@@ -91,13 +91,13 @@ class ScopeCsvTest(unittest.TestCase):
         self.assert_rejected(
             [CheckScope("c", 14)],
             [Finding("c", Status.FAIL, 1, "x")],
-            "examined 14 elements but has 1 results",
+            "examined count 14 does not match result count 1",
         )
 
     def test_more_results_than_examined_rejected(self):
         self.assert_rejected(
             [CheckScope("a", 1)], element_results("a", [1, 2]),
-            "examined 1 elements but has 2 results",
+            "examined count 1 does not match result count 2",
         )
 
     def test_same_element_twice_rejected(self):
@@ -122,7 +122,7 @@ class ScopeCsvTest(unittest.TestCase):
     def test_zero_examined_with_a_result_rejected(self):
         self.assert_rejected(
             [CheckScope("a", 0, "none")], [Finding("a", Status.PASS, 1)],
-            "examined 0 elements but has 1 results",
+            "examined count 0 does not match result count 1",
         )
 
     def test_model_level_check_one_result(self):

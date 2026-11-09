@@ -113,3 +113,19 @@ V3 是後來的版本：dry run 時分離開啟，不會建立本機檔，也不
 2. 元件輔助：`id_int`、`eid`、`level_of`。
 3. 不含：`save`、`SuppressWarnings`、交易處理（唯讀工具不需要）。
 4. 呼叫端必須保存**來源路徑**，並把它傳給報告輸出器；不可讀取分離開啟後的 `doc.PathName`（空字串）。
+
+### `open_target` 簽章差異
+
+Fill、VT 的 `open_target(path, info)` 與 Param、WS 的 `open_target(path, info, write)` 簽章不同。
+日後抽取前須先統一介面（建議採三參數版本）。
+
+## 6. 其他新發現（僅記錄，未修改任何既有腳本）
+
+1. **`Excel參數同步/ExcelRevitSync.py`** 用標準庫 `zipfile` 自行讀寫 xlsx（`write_xlsx`／`read_xlsx`），
+   Dynamo 內不需 openpyxl 就能產生 xlsx。格式相容性未驗證（未用 Excel 開啟過），且只處理目前開啟的文件。
+2. **`批次參數工具/BatchParamTools.py` 的 `check` 模式**（永遠唯讀）已是「參數完整度檢查」雛形：
+   規則如「參數不得為空」、`"設備編號~正規式"`（不得為空且須符合正規式），目前只輸出到 Watch 節點。
+   後續應重用其規則解析並輸出 `Finding`／`CheckScope`，不要重寫。
+3. **`批次複製視圖樣板/BatchCopyViewTemplates.py` 沒有 `-ESC-` 檔名防呆**
+   （只有 `BatchFillScadaParams.py` 有 `FILE_NAME_MUST_CONTAIN`），
+   但 `Dynamo批次處理_步驟說明.md` 的 FAQ 寫「靠 -ESC- 防呆跳過」，對視圖樣板這支不成立。只記錄，不修改。

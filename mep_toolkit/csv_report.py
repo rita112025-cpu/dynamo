@@ -99,8 +99,8 @@ def _check_complete(check: str, examined: int, results: List[Finding]) -> None:
         )
     if len(ids) != examined:
         raise ValueError(
-            "check %r examined %d elements but has %d results; every examined element "
-            "needs exactly one Finding" % (check, examined, len(ids))
+            "check %r: examined count %d does not match result count %d; every examined "
+            "element needs exactly one Finding" % (check, examined, len(ids))
         )
 
 
