@@ -241,5 +241,35 @@ class SharedParameterTest(unittest.TestCase):
         self._reject(m, "also required")
 
 
+class BasisTest(unittest.TestCase):
+    """R5: the rack rules are marked as inferred from existing code, not owner-confirmed."""
+
+    def _reject(self, mutate, pattern):
+        d = valid()
+        mutate(d)
+        with self.assertRaisesRegex(DictionaryError, pattern):
+            validate_dictionary(d)
+
+    def test_shipped_basis_says_inferred_not_confirmed(self):
+        basis = load_dictionary(CONFIG)  # loads only if the basis block is valid
+        with open(CONFIG, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["rack"]["basis"]["status"], "依既有程式推定，非業主確認")
+
+    def test_basis_block_required(self):
+        self._reject(lambda d: d["rack"].pop("basis"), "missing|basis")
+
+    def test_basis_status_cannot_claim_owner_confirmation(self):
+        for bad in ("業主確認", "已確認", "依既有程式推定", ""):
+            with self.subTest(status=bad):
+                self._reject(lambda d, s=bad: d["rack"]["basis"].update(status=s), "not owner-confirmed")
+
+    def test_basis_sources_required(self):
+        self._reject(lambda d: d["rack"]["basis"].update(non_empty_source=""), "non-empty")
+        self._reject(lambda d: d["rack"]["basis"].update(exists_source=""), "non-empty")
+
+    def test_basis_unknown_key(self):
+        self._reject(lambda d: d["rack"]["basis"].update(owner="x"), "unknown key")
+
+
 if __name__ == "__main__":
     unittest.main()

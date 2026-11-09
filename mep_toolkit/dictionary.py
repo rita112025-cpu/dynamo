@@ -4,10 +4,13 @@ and the SCADA shared parameters (name, GUID, data type) read from the source fil
 The dictionary is a JSON file (see config/parameter_dictionary.json). `validate_dictionary`
 rejects anything ambiguous so a typo can never silently disable a check.
 """
+import hashlib
 import json
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+
+from mep_toolkit.shared_params import SharedFileError, SharedFile, parse_shared_bytes
 
 # Categories the toolkit knows how to check (BuiltInCategory names).
 KNOWN_CATEGORIES = (
@@ -23,6 +26,8 @@ KNOWN_CATEGORIES = (
 GUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_DATA_TYPES = ("TEXT",)  # the only type in the source file (SCADA_SoW_V6)
+# Basis of the rack rules. They are inferred from existing code, NOT confirmed by the owner.
+BASIS_STATUS = "依既有程式推定，非業主確認"
 
 
 class DictionaryError(ValueError):
@@ -182,9 +187,14 @@ def validate_dictionary(data: Any) -> Dictionary:
     rack_raw = _only_keys(
         top.get("rack"),
         ("category", "family_name_contains", "family_name_prefix", "code_parameter",
-         "required_parameters", "non_empty_parameters", "pending_confirmation"),
+         "required_parameters", "non_empty_parameters", "pending_confirmation", "basis"),
         "rack",
     )
+    basis = _only_keys(rack_raw.get("basis"), ("status", "non_empty_source", "exists_source"), "rack basis")
+    if basis.get("status") != BASIS_STATUS:
+        raise DictionaryError("rack basis status must be %r (the rack rules are not owner-confirmed)" % BASIS_STATUS)
+    _text(basis.get("non_empty_source"), "rack basis non_empty_source")
+    _text(basis.get("exists_source"), "rack basis exists_source")
     category = _text(rack_raw.get("category"), "rack category")
     if category not in cats_raw:
         raise DictionaryError("rack category %r is not a configured category" % category)
@@ -243,3 +253,51 @@ def load_dictionary(path: str) -> Dictionary:
     except ValueError as ex:
         raise DictionaryError("%s is not valid JSON: %s" % (path, ex)) from ex
     return validate_dictionary(data)
+
+
+def verify_against_shared_file(dictionary: Dictionary, path: str) -> None:
+    """Check the dictionary against a Revit shared parameter file, in both directions.
+
+    Raises DictionaryError listing every difference: source hash, group, a name missing on
+    either side, a GUID that differs (name -> GUID and GUID -> name), a data type that differs.
+    """
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    try:
+        file = parse_shared_bytes(raw)
+    except SharedFileError as ex:
+        raise DictionaryError("shared parameter file %s: %s" % (path, ex)) from ex
+    problems = []
+    if file.sha256 != dictionary.shared.source_sha256:
+        problems.append("source file changed: sha256 %s, dictionary expects %s"
+                        % (file.sha256, dictionary.shared.source_sha256))
+    if dictionary.shared.group not in file.groups:
+        problems.append("group %r not in the file (file has %s)" % (dictionary.shared.group, list(file.groups)))
+    file_names = [p.name for p in file.params]
+    if len(set(file_names)) != len(file_names):
+        problems.append("the file has duplicate parameter names")
+    by_file = {p.name: p for p in file.params}
+    by_dict = {p.name: p for p in dictionary.shared.parameters}
+    # dictionary -> file
+    for name in sorted(by_dict):
+        if name not in by_file:
+            problems.append("dictionary has %s but the file does not" % name)
+            continue
+        fp, dp = by_file[name], by_dict[name]
+        if fp.guid.lower() != dp.guid:
+            problems.append("GUID differs for %s: file %s, dictionary %s" % (name, fp.guid, dp.guid))
+        if fp.data_type != dp.data_type:
+            problems.append("data type differs for %s: file %s, dictionary %s" % (name, fp.data_type, dp.data_type))
+    # file -> dictionary
+    for name in sorted(by_file):
+        if name not in by_dict:
+            problems.append("file has %s but the dictionary does not" % name)
+    dict_guid_to_name = {p.guid: p.name for p in dictionary.shared.parameters}
+    for fp in file.params:
+        guid = fp.guid.lower()
+        if guid in dict_guid_to_name and dict_guid_to_name[guid] != fp.name:
+            problems.append("GUID %s is %s in the file but %s in the dictionary"
+                            % (fp.guid, fp.name, dict_guid_to_name[guid]))
+    if problems:
+        raise DictionaryError("shared parameter file does not match the dictionary:" + chr(10)
+                              + "  - " + (chr(10) + "  - ").join(problems))

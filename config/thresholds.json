@@ -28,7 +28,7 @@
       "unit": "mm",
       "comparison": ">=",
       "height_basis": "bottom",
-      "applies_to": "電纜架水平段；垂直與斜向本版不判定",
+      "applies_to": "水平橋架（電纜架水平段）；垂直與斜向本版不判定",
       "status": "provisional",
       "source": "業主需求書(四) 附錄C 第三章：「宜高出地面 ≥ 2.5 m」（條款位置與原文措辭待核對）",
       "source_status": "待核對原文",

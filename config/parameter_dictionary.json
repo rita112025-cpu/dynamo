@@ -1,12 +1,14 @@
 {
   "schema_version": 1,
   "sources": {
-    "dual_track": "G:\\Dynamo\\批次填參數\\BatchFillScadaParams.py (RULES: 服務類型 for conduit/cable tray, 備註 for equipment/fixtures/wire)",
-    "rack_shared_parameters": "D:\\SCADA_主題導覽\\01_BIM model\\SCADA_機櫃_Dynamo\\NWC\\SCADA_SoW_V6_SharedParameters.txt (UTF-16; sha256 5d8ced89fe445bf10b5e4e17bb47acca81bc0ff13544954328e57ecb58bc9711)",
-    "rack_family_name": "D:\\SCADA_主題導覽\\01_BIM model\\SCADA_機櫃_Dynamo\\scada_racks.py (family_name)"
+    "dual_track": "批次填參數/BatchFillScadaParams.py（RULES）",
+    "rack_shared_parameters": "SCADA_SoW_V6_SharedParameters.txt（sha256 見 shared_parameters.source_sha256）",
+    "rack_family_name": "scada_racks.py（family_name）",
+    "rack_rules_inferred_from": "validate_racks.py（REQUIRED_COLUMNS）與 scada_racks.py（推定，見 rack.basis）",
+    "full_paths": "見 docs/parameter_dictionary.md（路徑不寫入設定檔）"
   },
   "shared_parameters": {
-    "source": "D:/SCADA_主題導覽/01_BIM model/SCADA_機櫃_Dynamo/NWC/SCADA_SoW_V6_SharedParameters.txt",
+    "source": "SCADA_SoW_V6_SharedParameters.txt",
     "source_sha256": "5d8ced89fe445bf10b5e4e17bb47acca81bc0ff13544954328e57ecb58bc9711",
     "group": "SCADA_SoW_V6",
     "applies_to": {
@@ -210,16 +212,21 @@
     "pending_confirmation": [
       {
         "parameter": "SCADA_前方淨距mm",
-        "reason": "scada_racks.py 由 CSV 欄位「前方淨距mm」加前綴產生，但共用參數檔(SoW_V6_SharedParameters.txt)沒有此名稱；尚未確認是否必填"
+        "reason": "scada_racks.py 由 CSV 欄位加前綴建立，但共用參數檔目前版本沒有此名稱；尚未確認是否已正式使用，也未確認是否必填。不檢查，不得自行補造 GUID。待確認：是否有新版共用參數檔，以及 scada_racks.py 是否已正式使用這三項。"
       },
       {
         "parameter": "SCADA_後方淨距mm",
-        "reason": "同上（CSV 欄位「後方淨距mm」，共用參數檔沒有）"
+        "reason": "scada_racks.py 由 CSV 欄位加前綴建立，但共用參數檔目前版本沒有此名稱；尚未確認是否已正式使用，也未確認是否必填。不檢查，不得自行補造 GUID。待確認：是否有新版共用參數檔，以及 scada_racks.py 是否已正式使用這三項。"
       },
       {
         "parameter": "SCADA_淨距依據",
-        "reason": "同上（CSV 欄位「淨距依據」，共用參數檔沒有）"
+        "reason": "scada_racks.py 由 CSV 欄位加前綴建立，但共用參數檔目前版本沒有此名稱；尚未確認是否已正式使用，也未確認是否必填。不檢查，不得自行補造 GUID。待確認：是否有新版共用參數檔，以及 scada_racks.py 是否已正式使用這三項。"
       }
-    ]
+    ],
+    "basis": {
+      "status": "依既有程式推定，非業主確認",
+      "non_empty_source": "validate_racks.py 的 REQUIRED_COLUMNS，以及 scada_racks.py 的欄位定義（推定）",
+      "exists_source": "scada_racks.py 寫入的 SCADA_* 共用參數清單（推定）"
+    }
   }
 }
