@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.tmp
+*.rvt
+*.0001.rvt
+_toolkit_git_backup/

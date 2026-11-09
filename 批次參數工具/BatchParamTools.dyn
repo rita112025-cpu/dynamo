@@ -1,0 +1,377 @@
+{
+  "Uuid": "4be24476-8dd5-44c7-9f58-89d3201c11d4",
+  "IsCustomNode": false,
+  "Description": "Batch check / compose / space parameter tools for many RVT files",
+  "Name": "BatchParamTools",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.Directory, CoreNodeModels",
+      "Id": "df52eec28e2d44f4847692f6b5a7b3ad",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "374b6ac25dd84505b267dd31fa863400",
+          "Name": "",
+          "Description": "Directory path.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "可讓您選取系統上的目錄，並傳回其路徑",
+      "HintPath": "C:\\Users\\user\\Downloads\\VT_Test",
+      "InputValue": "C:\\Users\\user\\Downloads\\VT_Test"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "922897676c87428ebea84761b1197b2c",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "4ce8e829312345ff9766f3fbdd1ad88e",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "[];"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "8290bffdc12f40a388c8df8b2863bb4e",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "de162152b03b4a67b7cbedcd1c81cdc0",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "\"check\";"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "5acead67b5934e72a118b2215a378559",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "2c0a7efd59684c63bf88ccd271f8e9ae",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "[\"備註\", \"服務類型\"];"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "a6703148c49c40eaaaba51cbaa5fc76b",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "7eca58a7e6f44bdd9b1b1828e68910b9",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "啟用在 True 與 False 之間選取",
+      "InputValue": false
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Batch parameter tools for every .rvt file of a folder (check / compose / space).\n#\n# IN[0]: folder path (string) or list of .rvt paths\n# IN[1]: category names (BuiltInCategory, e.g. \"OST_Conduit\"); empty list = the SCADA categories\n# IN[2]: mode  \"check\" | \"compose\" | \"space\"\n# IN[3]: spec (list of text, depends on the mode, see below)\n# IN[4]: True  = write and save / synchronize each file (compose / space only)\n#        False = dry run: files are opened, planned changes are listed, nothing is saved\n#\n# mode \"check\"   (always read-only) spec = parameter rules, one text per rule\n#     \"備註\"                       the parameter must not be empty\n#     \"設備編號~^[A-Z]+-[0-9]{3}$\"  must not be empty AND must match the regular expression\n# mode \"compose\" spec = [target parameter, template, optional \"overwrite\"]\n#     [\"設備編號\", \"{樓層}-{備註}-{#:3}\"]\n#     {參數名} = value of that parameter, also {類別} {族群} {類型} {樓層}\n#     {#:3}    = serial number, 3 digits; it restarts from 1 for every different text around it\n#     Existing codes are never changed: empty targets are filled and numbering continues after\n#     the highest existing number. \"overwrite\" renumbers everything. An element whose {參數名}\n#     source is empty is skipped. Serial order: level, then X, then Y.\n# mode \"space\"   spec = [\"目標參數=來源\", ...] with source  Room.Number | Room.Name | Level\n#     [\"房間編號=Room.Number\", \"房間名稱=Room.Name\", \"樓層=Level\"]\n#     Rooms are searched in this model first, then in loaded Revit links. Empty targets are\n#     filled and different values are updated (the values are derived data).\n#\n# Only text parameters are written. Needs a text instance parameter on the elements.\nimport clr, os, re, uuid, shutil\n\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\nfrom System import String\n\ndoc = DocumentManager.Instance.CurrentDBDocument\napp = doc.Application\n\nsrc_in = IN[0]\nCAT_NAMES = [str(c).strip() for c in IN[1]] if len(IN) > 1 and IN[1] else []\nMODE = str(IN[2]).strip().lower() if len(IN) > 2 and IN[2] else \"\"\nSPEC = [str(s).strip() for s in IN[3]] if len(IN) > 3 and IN[3] else []\nRUN = bool(IN[4]) if len(IN) > 4 else False\n\nDEFAULT_CATEGORIES = [\n    \"OST_Conduit\", \"OST_ConduitFitting\", \"OST_CableTray\", \"OST_CableTrayFitting\",\n    \"OST_ElectricalEquipment\", \"OST_ElectricalFixtures\", \"OST_Wire\",\n]\n# Safety: only files whose name contains this text are processed (\"\" = no check).\nFILE_NAME_MUST_CONTAIN = \"-ESC-\"\nSAMPLE_IDS = 8\n\n\n# ---- pure helpers (no Revit API) ----\nTOKEN_RE = re.compile(r\"\\{([^{}]+)\\}\")\nSERIAL_RE = re.compile(r\"^#(?::(\\d+))?$\")\n\n\ndef parse_template(tpl):\n    \"\"\"-> (left parts, right parts, serial width or None). Parts are (\"lit\", text) / (\"tok\", name).\n    Without a serial token everything is in the left parts.\"\"\"\n    left, right, width, seen = [], [], None, False\n    cur = left\n    for i, piece in enumerate(TOKEN_RE.split(tpl)):\n        if i % 2 == 0:\n            if piece:\n                cur.append((\"lit\", piece))\n            continue\n        m = SERIAL_RE.match(piece.strip())\n        if m:\n            if seen:\n                raise ValueError(\"only one {#} serial token is allowed\")\n            seen = True\n            width = int(m.group(1) or 1)\n            cur = right\n        else:\n            cur.append((\"tok\", piece.strip()))\n    return left, right, width\n\n\ndef fill_parts(parts, getter):\n    \"\"\"Join the parts; None when a {token} has no value.\"\"\"\n    out = []\n    for kind, v in parts:\n        if kind == \"lit\":\n            out.append(v)\n        else:\n            s = getter(v)\n            if not s:\n                return None\n            out.append(s)\n    return \"\".join(out)\n\n\ndef assign_serials(items, width, overwrite):\n    \"\"\"items: list of (index, sort key, left text, right text, current value).\n    Returns {index: new value} for the items that must get a (new) serial number.\"\"\"\n    result, groups = {}, {}\n    for it in items:\n        groups.setdefault((it[2], it[3]), []).append(it)\n    for (left, right), grp in groups.items():\n        pat = re.compile(\"^\" + re.escape(left) + r\"(\\d+)\" + re.escape(right) + \"$\")\n        highest, todo = 0, []\n        for idx, key, _l, _r, cur in grp:\n            cur = (cur or \"\").strip()\n            if overwrite or cur == \"\":\n                todo.append((key, idx))\n                continue\n            m = pat.match(cur)\n            if m:\n                highest = max(highest, int(m.group(1)))\n        for n, (key, idx) in enumerate(sorted(todo), highest + 1):\n            result[idx] = left + str(n).zfill(width) + right\n    return result\n\n\ndef parse_check_spec(text):\n    name, _, rx = text.partition(\"~\")\n    return name.strip(), (re.compile(rx.strip()) if rx.strip() else None)\n\n\ndef parse_space_spec(text):\n    target, _, source = text.partition(\"=\")\n    return target.strip(), source.strip()\n# ---- end pure helpers ----\n\n\ndef norm(p):\n    return os.path.normcase(os.path.abspath(p))\n\n\ndef to_list(x):\n    if x is None:\n        return []\n    if isinstance(x, str):\n        if not x.strip():\n            return []\n        if os.path.isdir(x):\n            return [os.path.join(x, f) for f in sorted(os.listdir(x))\n                    if f.lower().endswith('.rvt')\n                    and not re.search(r'\\.\\d{4}\\.rvt$', f, re.I)]  # skip backups\n        return [x]\n    return [str(p) for p in x if p]\n\n\ndef doc_paths(d):\n    \"\"\"File path of a document plus its central model path (if workshared).\"\"\"\n    paths = set()\n    if d.PathName:\n        paths.add(norm(d.PathName))\n    if d.IsWorkshared:\n        try:\n            central = ModelPathUtils.ConvertModelPathToUserVisiblePath(\n                d.GetWorksharingCentralModelPath())\n            if central:\n                paths.add(norm(central))\n        except Exception:\n            pass\n    return paths\n\n\nNS = \"BatchParam_\" + uuid.uuid4().hex  # unique namespace so re-runs don't clash\nfail_msgs = []\n\n\nclass SuppressWarnings(IFailuresPreprocessor):\n    \"\"\"Delete warnings silently; roll back on errors instead of showing a dialog.\"\"\"\n    __namespace__ = NS\n\n    def PreprocessFailures(self, accessor):\n        has_error = False\n        for f in accessor.GetFailureMessages():\n            if f.GetSeverity() == FailureSeverity.Warning:\n                accessor.DeleteWarning(f)\n            else:\n                has_error = True\n                fail_msgs.append(f.GetDescriptionText())\n        if has_error:\n            return FailureProcessingResult.ProceedWithRollBack\n        return FailureProcessingResult.Continue\n\n\ndef version_ok(info):\n    fmt = getattr(info, 'Format', None) or info.SavedInVersion\n    return str(app.VersionNumber) in str(fmt)\n\n\ndef open_target(path, info, write):\n    \"\"\"Return (document, temp local path or None). All worksets are opened so that no element\n    is silently missed. Read-only runs of a workshared file are opened detached: no local file\n    is created and the central model is never touched.\"\"\"\n    mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(path)\n    opts = OpenOptions()\n    local = None\n    if info.IsWorkshared:\n        opts.SetOpenWorksetsConfiguration(\n            WorksetConfiguration(WorksetConfigurationOption.OpenAllWorksets))\n        if not write:\n            opts.DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets\n        else:\n            opts.DetachFromCentralOption = DetachFromCentralOption.DoNotDetach\n            if info.IsCentral:\n                local = os.path.join(os.environ.get('TEMP'),\n                                     'BatchParam_%s_%s' % (uuid.uuid4().hex[:8], os.path.basename(path)))\n                local_mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(local)\n                WorksharingUtils.CreateNewLocal(mp, local_mp)\n                mp = local_mp\n    return app.OpenDocumentFile(mp, opts), local\n\n\ndef remove_temp_local(local):\n    if not local:\n        return\n    try:\n        if os.path.exists(local):\n            os.remove(local)\n        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)\n    except Exception:\n        pass\n\n\ndef save(tdoc):\n    if tdoc.IsWorkshared:\n        swc = SynchronizeWithCentralOptions()\n        swc.SetRelinquishOptions(RelinquishOptions(True))\n        swc.Comment = \"Batch parameter tools: \" + MODE\n        tdoc.SynchronizeWithCentral(TransactWithCentralOptions(), swc)\n    else:\n        tdoc.Save()\n\n\ndef eid(el):\n    i = el.Id\n    try:\n        return int(i.Value)\n    except AttributeError:\n        return int(i.IntegerValue)\n\n\ndef param_value(p):\n    \"\"\"Display text of a parameter (\"\" when missing or without value).\"\"\"\n    if p is None or not p.HasValue:\n        return \"\"\n    if p.StorageType == StorageType.String:\n        return (p.AsString() or \"\").strip()\n    return (p.AsValueString() or \"\").strip()\n\n\ndef lookup_text(el, tdoc, name):\n    \"\"\"Value of a parameter on the element, else on its type.\"\"\"\n    v = param_value(el.LookupParameter(name))\n    if v:\n        return v\n    t = tdoc.GetElement(el.GetTypeId())\n    return param_value(t.LookupParameter(name)) if t is not None else \"\"\n\n\ndef level_of(tdoc, el):\n    try:\n        lid = el.LevelId\n        if lid is None or lid == ElementId.InvalidElementId:\n            p = el.get_Parameter(BuiltInParameter.SCHEDULE_LEVEL_PARAM)\n            lid = p.AsElementId() if p is not None else None\n        if lid is not None and lid != ElementId.InvalidElementId:\n            return tdoc.GetElement(lid)\n    except Exception:\n        pass\n    return None\n\n\ndef location_point(el):\n    loc = el.Location\n    if loc is None:\n        return None\n    pt = getattr(loc, \"Point\", None)\n    if pt is not None:\n        return pt\n    crv = getattr(loc, \"Curve\", None)\n    if crv is not None:\n        return crv.Evaluate(0.5, True)\n    return None\n\n\ndef sort_key(tdoc, el):\n    lv = level_of(tdoc, el)\n    pt = location_point(el)\n    elev = lv.Elevation if lv is not None else 0.0\n    x, y = (pt.X, pt.Y) if pt is not None else (0.0, 0.0)\n    return (round(elev, 3), round(x, 2), round(y, 2), eid(el))\n\n\ndef cat_label(tdoc, bic, name):\n    try:\n        return Category.GetCategory(tdoc, bic).Name\n    except Exception:\n        return name\n\n\ndef collect_groups(tdoc):\n    groups = []\n    for name in CAT_NAMES or DEFAULT_CATEGORIES:\n        bic = getattr(BuiltInCategory, name, None) or getattr(BuiltInCategory, \"OST_\" + name, None)\n        if bic is None:\n            continue\n        els = list(FilteredElementCollector(tdoc).OfCategory(bic).WhereElementIsNotElementType())\n        groups.append((cat_label(tdoc, bic, name), els))\n    return groups\n\n\ndef ids_text(ids):\n    shown = \",\".join(str(i) for i in ids[:SAMPLE_IDS])\n    return shown + (\",...\" if len(ids) > SAMPLE_IDS else \"\")\n\n\n# ---- mode: check ----\ndef run_check(tdoc, rules):\n    lines = []\n    for label, els in collect_groups(tdoc):\n        if not els:\n            continue\n        lines.append(\"    %s (n=%d)\" % (label, len(els)))\n        for name, rx in rules:\n            empty, bad, missing = [], [], 0\n            for el in els:\n                p = el.LookupParameter(name)\n                if p is None:\n                    missing += 1\n                    continue\n                v = param_value(p)\n                if v == \"\":\n                    empty.append(eid(el))\n                elif rx is not None and not rx.search(v):\n                    bad.append(eid(el))\n            if not (empty or bad or missing):\n                lines.append(\"      %s: OK\" % name)\n                continue\n            parts = []\n            if missing:\n                parts.append(\"無此參數 %d\" % missing)\n            if empty:\n                parts.append(\"空值 %d (ids: %s)\" % (len(empty), ids_text(empty)))\n            if bad:\n                parts.append(\"格式不符 %d (ids: %s)\" % (len(bad), ids_text(bad)))\n            lines.append(\"      %s: %s\" % (name, \" | \".join(parts)))\n    return lines\n\n\n# ---- mode: compose ----\ndef plan_compose(tdoc, target, tpl, overwrite):\n    left_parts, right_parts, width = parse_template(tpl)\n    lines, plan = [], []\n    for label, els in collect_groups(tdoc):\n        if not els:\n            continue\n        c = {\"set\": 0, \"same\": 0, \"keep\": 0, \"nosrc\": 0, \"noparam\": 0}\n        items, targets = [], {}\n        for el in els:\n            p = el.LookupParameter(target)\n            if p is None or p.IsReadOnly or p.StorageType != StorageType.String:\n                c[\"noparam\"] += 1\n                continue\n\n            def getter(name, el=el):\n                low = name.lower()\n                if low in (\"類別\", \"category\"):\n                    return el.Category.Name if el.Category is not None else \"\"\n                if low in (\"族群\", \"family\"):\n                    t = tdoc.GetElement(el.GetTypeId())\n                    return getattr(t, \"FamilyName\", \"\") if t is not None else \"\"\n                if low in (\"類型\", \"type\"):\n                    t = tdoc.GetElement(el.GetTypeId())\n                    return t.Name if t is not None else \"\"\n                if low in (\"樓層\", \"level\"):\n                    lv = level_of(tdoc, el)\n                    return lv.Name if lv is not None else \"\"\n                return lookup_text(el, tdoc, name)\n\n            left = fill_parts(left_parts, getter)\n            right = fill_parts(right_parts, getter)\n            if left is None or right is None:\n                c[\"nosrc\"] += 1\n                continue\n            cur = (p.AsString() or \"\").strip()\n            if width is None:\n                if cur == left:\n                    c[\"same\"] += 1\n                elif cur == \"\" or overwrite:\n                    plan.append((el, p, left))\n                    c[\"set\"] += 1\n                else:\n                    c[\"keep\"] += 1\n                continue\n            idx = len(items)\n            items.append((idx, sort_key(tdoc, el), left, right, cur))\n            targets[idx] = (el, p, cur)\n        if width is not None:\n            new_values = assign_serials(items, width, overwrite)\n            for idx, new in new_values.items():\n                el, p, cur = targets[idx]\n                if cur == new:\n                    c[\"same\"] += 1\n                else:\n                    plan.append((el, p, new))\n                    c[\"set\"] += 1\n            c[\"keep\"] += len(items) - len(new_values)\n        lines.append(\"    %s [%s]: 填入 %d, 已是目標值 %d, 保留既有值 %d, 來源參數為空略過 %d, 無此參數或唯讀 %d\"\n                     % (label, target, c[\"set\"], c[\"same\"], c[\"keep\"], c[\"nosrc\"], c[\"noparam\"]))\n    return lines, plan\n\n\n# ---- mode: space ----\ndef room_finder(tdoc):\n    links = []\n    for li in FilteredElementCollector(tdoc).OfClass(RevitLinkInstance):\n        ld = li.GetLinkDocument()\n        if ld is not None:\n            links.append((ld, li.GetTotalTransform().Inverse))\n\n    def find(el):\n        try:\n            r = el.Room\n            if r is not None:\n                return r\n        except Exception:\n            pass\n        pt = location_point(el)\n        if pt is None:\n            return None\n        probes = [pt]\n        lv = level_of(tdoc, el)\n        if lv is not None:\n            probes.append(XYZ(pt.X, pt.Y, lv.Elevation + 1.0))\n        for q in probes:\n            try:\n                r = tdoc.GetRoomAtPoint(q)\n                if r is not None:\n                    return r\n            except Exception:\n                pass\n            for ld, inv in links:\n                try:\n                    r = ld.GetRoomAtPoint(inv.OfPoint(q))\n                    if r is not None:\n                        return r\n                except Exception:\n                    pass\n        return None\n    return find\n\n\ndef room_text(room, bip):\n    p = room.get_Parameter(bip)\n    return (p.AsString() or \"\").strip() if p is not None else \"\"\n\n\ndef plan_space(tdoc, pairs):\n    find_room = room_finder(tdoc)\n    sources = {\"room.number\": BuiltInParameter.ROOM_NUMBER, \"room.name\": BuiltInParameter.ROOM_NAME}\n    lines, plan = [], []\n    for label, els in collect_groups(tdoc):\n        if not els:\n            continue\n        c = {\"set\": 0, \"update\": 0, \"same\": 0, \"noroom\": 0, \"noparam\": 0}\n        for el in els:\n            room = None\n            room_done = False\n            for target, source in pairs:\n                p = el.LookupParameter(target)\n                if p is None or p.IsReadOnly or p.StorageType != StorageType.String:\n                    c[\"noparam\"] += 1\n                    continue\n                src = source.lower()\n                if src == \"level\":\n                    lv = level_of(tdoc, el)\n                    val = lv.Name if lv is not None else \"\"\n                else:\n                    if not room_done:\n                        room, room_done = find_room(el), True\n                    val = room_text(room, sources[src]) if room is not None else \"\"\n                    if not val:\n                        c[\"noroom\"] += 1\n                        continue\n                if not val:\n                    continue\n                cur = (p.AsString() or \"\").strip()\n                if cur == val:\n                    c[\"same\"] += 1\n                else:\n                    plan.append((el, p, val))\n                    c[\"update\" if cur else \"set\"] += 1\n        lines.append(\"    %s: 填入 %d, 更新 %d, 已相同 %d, 找不到房間 %d, 無此參數或唯讀 %d\"\n                     % (label, c[\"set\"], c[\"update\"], c[\"same\"], c[\"noroom\"], c[\"noparam\"]))\n    return lines, plan\n\n\ndef apply_plan(tdoc, plan):\n    \"\"\"Write the planned values in one transaction. Returns the number of failed writes.\"\"\"\n    del fail_msgs[:]\n    t = Transaction(tdoc, \"Batch parameter tools: \" + MODE)\n    t.Start()\n    failed = 0\n    try:\n        for el, p, new in plan:\n            try:\n                p.Set.Overloads[String](new)\n            except Exception:\n                failed += 1  # for example owned by another user\n        fho = t.GetFailureHandlingOptions()\n        fho.SetFailuresPreprocessor(SuppressWarnings())\n        fho.SetClearAfterRollback(True)\n        status = t.Commit(fho)\n        if status != TransactionStatus.Committed:\n            raise Exception(\"rolled back: \" + \"; \".join(fail_msgs))\n    except Exception:\n        if t.HasStarted() and not t.HasEnded():\n            t.RollBack()\n        raise\n    return failed\n\n\ndef process(tdoc, write):\n    \"\"\"Returns (report lines, number of values written).\"\"\"\n    if MODE == \"check\":\n        return run_check(tdoc, CHECK_RULES), 0\n    if MODE == \"compose\":\n        lines, plan = plan_compose(tdoc, SPEC[0], SPEC[1], OVERWRITE)\n    else:\n        lines, plan = plan_space(tdoc, SPACE_PAIRS)\n    if write and plan:\n        failed = apply_plan(tdoc, plan)\n        lines.append(\"    已寫入 %d, 失敗 %d\" % (len(plan) - failed, failed))\n        return lines, len(plan) - failed\n    return lines, 0\n\n\n# ---- validate the spec before any file is opened ----\nreport = []\nCHECK_RULES, SPACE_PAIRS, OVERWRITE = [], [], False\ntry:\n    if MODE == \"check\":\n        CHECK_RULES = [parse_check_spec(s) for s in SPEC]\n        if not CHECK_RULES:\n            raise ValueError('mode \"check\" needs at least one parameter rule in IN[3]')\n    elif MODE == \"compose\":\n        if len(SPEC) < 2:\n            raise ValueError('mode \"compose\" needs [target parameter, template] in IN[3]')\n        parse_template(SPEC[1])\n        OVERWRITE = len(SPEC) > 2 and SPEC[2].lower() == \"overwrite\"\n    elif MODE == \"space\":\n        SPACE_PAIRS = [parse_space_spec(s) for s in SPEC]\n        for target, source in SPACE_PAIRS:\n            if not target or source.lower() not in (\"room.number\", \"room.name\", \"level\"):\n                raise ValueError('bad space rule \"%s=%s\" (source: Room.Number | Room.Name | Level)' % (target, source))\n        if not SPACE_PAIRS:\n            raise ValueError('mode \"space\" needs rules like \"房間編號=Room.Number\" in IN[3]')\n    else:\n        raise ValueError('IN[2] must be \"check\", \"compose\" or \"space\"')\nexcept Exception as ex:\n    report.append(\"[ERROR spec] %s\" % ex)\n    MODE = \"\"\n\nWRITE = RUN and MODE in (\"compose\", \"space\")\nif MODE:\n    report.append(\"Mode: %s | %s | spec: %s\" % (\n        MODE, \"WRITE\" if WRITE else (\"READ ONLY\" if MODE == \"check\" else \"DRY RUN (nothing is saved)\"),\n        \" ; \".join(SPEC)))\n\nif MODE:\n    # The current document is never a target; documents already open or loaded as links cannot be reopened\n    src_paths = doc_paths(doc)\n    open_paths = set()\n    for d in app.Documents:\n        open_paths |= doc_paths(d)\n    open_paths -= src_paths\n\n    targets = [p for p in to_list(src_in) if norm(p) not in src_paths]\n    if not targets:\n        report.append(\"[NO TARGET FILES] check IN[0] folder path\")\n\n    # Close Dynamo's own transaction before opening other documents\n    TransactionManager.Instance.ForceCloseTransaction()\n    for p in targets:\n        if norm(p) in open_paths:\n            report.append(\"[SKIP already open or loaded as link - unload it first] \" + p)\n            continue\n        if FILE_NAME_MUST_CONTAIN and FILE_NAME_MUST_CONTAIN.upper() not in os.path.basename(p).upper():\n            report.append(\"[SKIP file name has no '%s' - not a SCADA file] %s\" % (FILE_NAME_MUST_CONTAIN, p))\n            continue\n        try:\n            info = BasicFileInfo.Extract(p)\n        except Exception as ex:\n            report.append(\"[ERROR read] %s: %s\" % (p, ex))\n            continue\n        if not version_ok(info):\n            report.append(\"[SKIP version mismatch] \" + p)\n            continue\n        tdoc, local = None, None\n        try:\n            tdoc, local = open_target(p, info, WRITE)\n            lines, written = process(tdoc, WRITE)\n            if WRITE and written > 0:\n                save(tdoc)\n            tag = \"[CHECK]\" if MODE == \"check\" else (\"[OK]\" if WRITE else \"[DRY RUN]\")\n            if WRITE and written == 0:\n                tag = \"[OK nothing to change]\"\n            report.append(\"%s %s (workshared=%s)\" % (tag, p, info.IsWorkshared))\n            report += lines\n        except Exception as ex:\n            report.append(\"[ERROR] %s: %s\" % (p, ex))\n        finally:\n            if tdoc is not None:\n                tdoc.Close(False)\n            remove_temp_local(local)\n\n# The Watch node truncates long lines, so keep the full report in a text file as well\ntry:\n    with open(os.path.join(os.environ.get('TEMP'), 'BatchParamTools_last_report.txt'), 'w', encoding='utf-8') as fh:\n        fh.write(\"\\n\".join(report))\nexcept Exception:\n    pass\n\nOUT = report\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "638c70b1a4f54ea98c3d0d29cb017f0b",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "134193bf1dd94135bac9c4f780ec5811",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "1110440f8da740e38fd5b0f80f017213",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "b4a617c52db44ee4a54bc736a335925f",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "5b17c85f06b1442a9022e5f6729a163b",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "c728b919ad3d4a4b9bbda3e9d584b041",
+          "Name": "IN[4]",
+          "Description": "Input #4",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "9ff28254b9b24272aa05e8d4ee030898",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "執行嵌入的 Python 指令碼。"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 600.0,
+      "WatchHeight": 400.0,
+      "Id": "1dd5289d65334636bc5332c42df9acbb",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "7db1f86013334b5fadbaf095ce5629de",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "86a823db851e4f84bfc9f73111bd4498",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "視覺化節點的輸出"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "374b6ac25dd84505b267dd31fa863400",
+      "End": "134193bf1dd94135bac9c4f780ec5811",
+      "Id": "0f4bf44d01a14be3abbaf093584acc62",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "4ce8e829312345ff9766f3fbdd1ad88e",
+      "End": "1110440f8da740e38fd5b0f80f017213",
+      "Id": "487da065200949ab83e6b5f98fed051e",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "de162152b03b4a67b7cbedcd1c81cdc0",
+      "End": "b4a617c52db44ee4a54bc736a335925f",
+      "Id": "3a80ad04e3ae42be9c9a8637ad7cab13",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "2c0a7efd59684c63bf88ccd271f8e9ae",
+      "End": "5b17c85f06b1442a9022e5f6729a163b",
+      "Id": "9602949e740049e8b546751cc054aa7d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "7eca58a7e6f44bdd9b1b1828e68910b9",
+      "End": "c728b919ad3d4a4b9bbda3e9d584b041",
+      "Id": "7cbcc34d65444796a202930f9a047525",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "9ff28254b9b24272aa05e8d4ee030898",
+      "End": "7db1f86013334b5fadbaf095ce5629de",
+      "Id": "f6ee8830ad57462ba57dac370d02d3a1",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": null,
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "性質",
+      "Version": "3.3",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "8.2",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "無",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.2.11986",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "背景預覽(_B)",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "df52eec28e2d44f4847692f6b5a7b3ad",
+        "Name": "Directory Path (target folder)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "922897676c87428ebea84761b1197b2c",
+        "Name": "Categories (empty = SCADA categories)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 150.0
+      },
+      {
+        "Id": "8290bffdc12f40a388c8df8b2863bb4e",
+        "Name": "Mode: \"check\" / \"compose\" / \"space\"",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "5acead67b5934e72a118b2215a378559",
+        "Name": "Spec (depends on mode)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 450.0
+      },
+      {
+        "Id": "a6703148c49c40eaaaba51cbaa5fc76b",
+        "Name": "Run? False = dry run",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 600.0
+      },
+      {
+        "Id": "638c70b1a4f54ea98c3d0d29cb017f0b",
+        "Name": "Batch Param Tools",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 450.0,
+        "Y": 120.0
+      },
+      {
+        "Id": "1dd5289d65334636bc5332c42df9acbb",
+        "Name": "Report",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 800.0,
+        "Y": 120.0
+      }
+    ],
+    "Annotations": [],
+    "X": 100.0,
+    "Y": 100.0,
+    "Zoom": 0.9
+  }
+}

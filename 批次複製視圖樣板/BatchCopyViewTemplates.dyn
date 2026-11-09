@@ -1,0 +1,287 @@
+{
+  "Uuid": "cab3ebea-f847-408f-abe9-298e01af6989",
+  "IsCustomNode": false,
+  "Description": "Batch copy view templates to many RVT files",
+  "Name": "BatchCopyViewTemplates",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.Directory, CoreNodeModels",
+      "Id": "cca715a6944244dbab8ca26cf1e55e30",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "73775ca5feba4b5d81c045485083310e",
+          "Name": "",
+          "Description": "Directory path.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "可讓您選取系統上的目錄，並傳回其路徑",
+      "HintPath": "C:\\Users\\user\\Downloads\\VT_Test",
+      "InputValue": "C:\\Users\\user\\Downloads\\VT_Test"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "f573ca644de843b6b226d82340199bb9",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "5f31d85dd4ce4a8483eb126c7d2cfe21",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "[\"SCADA\"];"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "bd2d42569a4c4fa598cde8bf4e698ff3",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "92edf3cc2cb3415b8df61c9c1f6d7648",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "啟用在 True 與 False 之間選取",
+      "InputValue": false
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Batch copy view templates (and the filters they use) from the CURRENT document\n# to every .rvt file in a folder.\n# IN[0]: folder path (string) or list of .rvt paths\n# IN[1]: view template names to copy; empty list = all templates in this file\n# IN[2]: True = run; False = dry run (no file is opened or changed)\nimport clr, os, re, uuid, shutil\n\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\nfrom System.Collections.Generic import List\n\ndoc = DocumentManager.Instance.CurrentDBDocument\napp = doc.Application\n\nsrc_in = IN[0]\nnames = IN[1] if len(IN) > 1 and IN[1] else []\nRUN = bool(IN[2]) if len(IN) > 2 else False\nif isinstance(names, str):\n    names = [names]\nnames = [str(n) for n in names]\n\n\ndef norm(p):\n    return os.path.normcase(os.path.abspath(p))\n\n\ndef to_list(x):\n    if x is None:\n        return []\n    if isinstance(x, str):\n        if not x.strip():\n            return []\n        if os.path.isdir(x):\n            return [os.path.join(x, f) for f in sorted(os.listdir(x))\n                    if f.lower().endswith('.rvt')\n                    and not re.search(r'\\.\\d{4}\\.rvt$', f, re.I)]  # skip backups\n        return [x]\n    return [str(p) for p in x if p]\n\n\ndef doc_paths(d):\n    \"\"\"File path of a document plus its central model path (if workshared).\"\"\"\n    paths = set()\n    if d.PathName:\n        paths.add(norm(d.PathName))\n    if d.IsWorkshared:\n        try:\n            central = ModelPathUtils.ConvertModelPathToUserVisiblePath(\n                d.GetWorksharingCentralModelPath())\n            if central:\n                paths.add(norm(central))\n        except Exception:\n            pass\n    return paths\n\n\nNS = \"BatchVT_\" + uuid.uuid4().hex  # unique namespace so re-runs don't clash\nfail_msgs = []\n\n\nclass UseDestinationTypes(IDuplicateTypeNamesHandler):\n    __namespace__ = NS\n\n    def OnDuplicateTypeNamesFound(self, args):\n        return DuplicateTypeAction.UseDestinationTypes\n\n\nclass SuppressWarnings(IFailuresPreprocessor):\n    \"\"\"Delete warnings silently; roll back on errors instead of showing a dialog.\"\"\"\n    __namespace__ = NS\n\n    def PreprocessFailures(self, accessor):\n        has_error = False\n        for f in accessor.GetFailureMessages():\n            if f.GetSeverity() == FailureSeverity.Warning:\n                accessor.DeleteWarning(f)\n            else:\n                has_error = True\n                fail_msgs.append(f.GetDescriptionText())\n        if has_error:\n            return FailureProcessingResult.ProceedWithRollBack\n        return FailureProcessingResult.Continue\n\n\ndef version_ok(info):\n    fmt = getattr(info, 'Format', None) or info.SavedInVersion\n    return str(app.VersionNumber) in str(fmt)\n\n\ndef open_target(path, info):\n    \"\"\"Return (document, temp local path or None).\"\"\"\n    mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(path)\n    opts = OpenOptions()\n    local = None\n    if info.IsWorkshared:\n        opts.DetachFromCentralOption = DetachFromCentralOption.DoNotDetach\n        opts.SetOpenWorksetsConfiguration(\n            WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets))\n        if info.IsCentral:\n            local = os.path.join(os.environ.get('TEMP'),\n                                 'BatchVT_%s_%s' % (uuid.uuid4().hex[:8], os.path.basename(path)))\n            local_mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(local)\n            WorksharingUtils.CreateNewLocal(mp, local_mp)\n            mp = local_mp\n    return app.OpenDocumentFile(mp, opts), local\n\n\ndef remove_temp_local(local):\n    if not local:\n        return\n    try:\n        if os.path.exists(local):\n            os.remove(local)\n        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)\n    except Exception:\n        pass\n\n\ndef copy_templates(tdoc, templates):\n    log = []\n    existing = dict((v.Name, v) for v in FilteredElementCollector(tdoc).OfClass(View) if v.IsTemplate)\n    views = [v for v in FilteredElementCollector(tdoc).OfClass(View) if not v.IsTemplate]\n    vfts = list(FilteredElementCollector(tdoc).OfClass(ViewFamilyType))\n    opts = CopyPasteOptions()\n    opts.SetDuplicateTypeNamesHandler(UseDestinationTypes())\n    del fail_msgs[:]\n\n    t = Transaction(tdoc, \"Batch copy view templates\")\n    t.Start()\n    try:\n        for src in templates:\n            old = existing.get(src.Name)\n            if old is not None:\n                # Rename the old template first so the copy never clashes with it\n                old.Name = \"%s_old_%s\" % (src.Name, uuid.uuid4().hex[:8])\n\n            new_ids = ElementTransformUtils.CopyElements(\n                doc, List[ElementId]([src.Id]), tdoc, Transform.Identity, opts)\n            new_v = None\n            for i in new_ids:\n                e = tdoc.GetElement(i)\n                if isinstance(e, View) and e.IsTemplate:\n                    new_v = e\n                    break\n            if new_v is None or (old is not None and new_v.Id == old.Id):\n                raise Exception(\"copy failed: \" + src.Name)\n\n            if old is None:\n                log.append(\"    added: \" + src.Name)\n            else:\n                for v in views:\n                    if v.ViewTemplateId == old.Id:\n                        v.ViewTemplateId = new_v.Id\n                for f in vfts:\n                    if f.DefaultTemplateId == old.Id:\n                        f.DefaultTemplateId = new_v.Id\n                tdoc.Delete(old.Id)\n                log.append(\"    overwritten: \" + src.Name)\n            if new_v.Name != src.Name:\n                new_v.Name = src.Name\n\n        fho = t.GetFailureHandlingOptions()\n        fho.SetFailuresPreprocessor(SuppressWarnings())\n        fho.SetClearAfterRollback(True)\n        status = t.Commit(fho)\n        if status != TransactionStatus.Committed:\n            raise Exception(\"rolled back: \" + \"; \".join(fail_msgs))\n    except Exception:\n        if t.HasStarted() and not t.HasEnded():\n            t.RollBack()\n        raise\n    return log\n\n\ndef save(tdoc):\n    if tdoc.IsWorkshared:\n        swc = SynchronizeWithCentralOptions()\n        swc.SetRelinquishOptions(RelinquishOptions(True))\n        swc.Comment = \"Batch copy view templates\"\n        tdoc.SynchronizeWithCentral(TransactWithCentralOptions(), swc)\n    else:\n        tdoc.Save()\n\n\ntemplates = [v for v in FilteredElementCollector(doc).OfClass(View)\n             if v.IsTemplate and (not names or v.Name in names)]\nreport = [\"Source templates (%d): %s\" % (len(templates), \", \".join(v.Name for v in templates))]\nfound = [v.Name for v in templates]\nreport += [\"[NOT FOUND in source] \" + n for n in names if n not in found]\n\n# The source file itself (and its central model) is never a target\nsrc_paths = doc_paths(doc)\n# Documents already open in this Revit session (including loaded links) cannot be opened again\nopen_paths = set()\nfor d in app.Documents:\n    open_paths |= doc_paths(d)\nopen_paths -= src_paths\n\ntargets = [p for p in to_list(src_in) if norm(p) not in src_paths]\nif not targets:\n    report.append(\"[NO TARGET FILES] check IN[0] folder path\")\n\nif templates:\n    if RUN:\n        # Close Dynamo's own transaction before opening other documents\n        TransactionManager.Instance.ForceCloseTransaction()\n    for p in targets:\n        if norm(p) in open_paths:\n            report.append(\"[SKIP already open or loaded as link - unload it first] \" + p)\n            continue\n        try:\n            info = BasicFileInfo.Extract(p)\n        except Exception as ex:\n            report.append(\"[ERROR read] %s: %s\" % (p, ex))\n            continue\n        if not version_ok(info):\n            report.append(\"[SKIP version mismatch] \" + p)\n            continue\n        if not RUN:\n            report.append(\"[DRY RUN] %s (workshared=%s)\" % (p, info.IsWorkshared))\n            continue\n        tdoc, local = None, None\n        try:\n            tdoc, local = open_target(p, info)\n            log = copy_templates(tdoc, templates)\n            save(tdoc)\n            report.append(\"[OK] \" + p)\n            report += log\n        except Exception as ex:\n            report.append(\"[ERROR] %s: %s\" % (p, ex))\n        finally:\n            if tdoc is not None:\n                tdoc.Close(False)\n            remove_temp_local(local)\n\nOUT = report\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "291a4cde782848d5b575fabeebd34133",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "f7ba47c2773646139492d1303082d776",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "989b8569c8ba423da26dbe46cbf6df62",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "c0511798a78f4ec087249d7d0537fe03",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "1f15d6be0117437c88809c2d05b57dc5",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "執行嵌入的 Python 指令碼。"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "225b0b2ea41842b0ac90b02e8256c49f",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "0e5fd79495e34ff8af576562634e59bc",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "fdfbe2f9681e4fb29dc91dbd232d7676",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "視覺化節點的輸出"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "73775ca5feba4b5d81c045485083310e",
+      "End": "f7ba47c2773646139492d1303082d776",
+      "Id": "e95bc5f3f1a44ffa889ffbeb1b795318",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "5f31d85dd4ce4a8483eb126c7d2cfe21",
+      "End": "989b8569c8ba423da26dbe46cbf6df62",
+      "Id": "10e16ed1ae7a4e9d9eb033226cd7e2bb",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "92edf3cc2cb3415b8df61c9c1f6d7648",
+      "End": "c0511798a78f4ec087249d7d0537fe03",
+      "Id": "4154cd22cd3d4e9c9f5856fae4baa71e",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "1f15d6be0117437c88809c2d05b57dc5",
+      "End": "0e5fd79495e34ff8af576562634e59bc",
+      "Id": "09441a53ec0143d59f5dd343a96c73d2",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": null,
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "性質",
+      "Version": "3.3",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "8.2",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "無",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.2.11986",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "背景預覽(_B)",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "cca715a6944244dbab8ca26cf1e55e30",
+        "Name": "Directory Path (target folder)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "f573ca644de843b6b226d82340199bb9",
+        "Name": "Template names ([] = all)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 150.0
+      },
+      {
+        "Id": "bd2d42569a4c4fa598cde8bf4e698ff3",
+        "Name": "Run? False = dry run",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "291a4cde782848d5b575fabeebd34133",
+        "Name": "Batch Copy View Templates",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 450.0,
+        "Y": 120.0
+      },
+      {
+        "Id": "225b0b2ea41842b0ac90b02e8256c49f",
+        "Name": "Report",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 800.0,
+        "Y": 120.0
+      }
+    ],
+    "Annotations": [],
+    "X": 100.0,
+    "Y": 100.0,
+    "Zoom": 0.9
+  }
+}

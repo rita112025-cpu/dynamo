@@ -1,0 +1,376 @@
+{
+  "Uuid": "e1f5b349-9854-4d86-8704-dac136c09da4",
+  "IsCustomNode": false,
+  "Description": "Export / import Revit parameters to an .xlsx file (current document)",
+  "Name": "ExcelRevitSync",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "339ca312b65e48cc9578ee98b369ae9f",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "978c1421d7254695bb3ce3cb7a406a11",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "\"export\";"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "ab749f21f9a549b1bb5c545b1b695055",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "303873be97e94390b8781984308a2956",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "\"C:/Users/user/Downloads/ScadaParams.xlsx\";"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "25527fdee5e14e83ad3dd81bb64daf59",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "39bb944ecb7c4880a4ba879ebb59ed42",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "[];"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "b1f91545f4944c1e885f16856c54ebed",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "2eedfacea05e4a4d94852b67f0e9df7f",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "[];"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "5263e292a675451e81f1d1d9050e97a3",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "76f15face3b545e29e5dc06da5543174",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "啟用在 True 與 False 之間選取",
+      "InputValue": false
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Excel <-> Revit parameter sync for the CURRENT document.\n# The .xlsx file is read / written with the Python standard library, so Excel does not\n# have to be installed (and must be CLOSED while this script writes the file).\n#\n# IN[0]: mode  \"export\" | \"import\"\n# IN[1]: path of the .xlsx file\n# IN[2]: category names (BuiltInCategory, e.g. \"OST_Conduit\"); empty list = the SCADA categories\n#        (export only)\n# IN[3]: export: parameter names to export; empty list = every writable text / number /\n#        yes-no instance parameter found on the elements\n#        import: when not empty, only these columns are written back\n# IN[4]: True = write to the model (import only); False = dry run, nothing is changed\n#\n# Sheet layout (row 1 = header):\n#   grey columns   UniqueId / ElementId / 類別 / 族群 / 類型 / 樓層  -> identify the row, never written\n#   other columns  header = parameter name, written back on import\n#\n# Import rules (never destructive):\n#   - rows are matched by UniqueId (ElementId only when the UniqueId cell is empty)\n#   - an EMPTY cell is skipped: a blank never clears a value in the model\n#   - same value                      -> left alone\n#   - read-only / missing parameter   -> counted, not changed\n#   - Yes/No parameters accept 是/否, yes/no, true/false, 1/0\n#   - length / number parameters use the project display units (the same text export writes)\nimport clr, os, re, zipfile\nimport xml.etree.ElementTree as ET\nfrom xml.sax.saxutils import escape\n\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\nfrom System import String, Int32, Int64\n\ndoc = DocumentManager.Instance.CurrentDBDocument\n\nMODE = str(IN[0]).strip().lower() if len(IN) > 0 and IN[0] else \"\"\nXLSX_PATH = str(IN[1]).strip() if len(IN) > 1 and IN[1] else \"\"\nCATEGORIES = [str(c).strip() for c in IN[2]] if len(IN) > 2 and IN[2] else []\nPARAM_NAMES = [str(n).strip() for n in IN[3]] if len(IN) > 3 and IN[3] else []\nRUN = bool(IN[4]) if len(IN) > 4 else False\n\nDEFAULT_CATEGORIES = [\n    \"OST_Conduit\", \"OST_ConduitFitting\", \"OST_CableTray\", \"OST_CableTrayFitting\",\n    \"OST_ElectricalEquipment\", \"OST_ElectricalFixtures\", \"OST_Wire\",\n]\nFIXED = [\"UniqueId\", \"ElementId\", \"類別\", \"族群\", \"類型\", \"樓層\"]\nSAMPLE_PER_CATEGORY = 300  # elements inspected per category when the parameter list is built\nYES = (\"是\", \"yes\", \"y\", \"true\", \"t\", \"1\")\nNO = (\"否\", \"no\", \"n\", \"false\", \"f\", \"0\")\nSHEET_NAME = \"Revit參數\"\n\n\n# ---- xlsx reader / writer (standard library only) ----\n_MAIN = \"{http://schemas.openxmlformats.org/spreadsheetml/2006/main}\"\n_REL = \"{http://schemas.openxmlformats.org/officeDocument/2006/relationships}\"\n_XML_BAD = re.compile(u\"[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]\")\n\n_CONTENT_TYPES = (\n    '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>'\n    '<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">'\n    '<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>'\n    '<Default Extension=\"xml\" ContentType=\"application/xml\"/>'\n    '<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>'\n    '<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>'\n    '<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>'\n    '</Types>')\n_ROOT_RELS = (\n    '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>'\n    '<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">'\n    '<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>'\n    '</Relationships>')\n_WORKBOOK_RELS = (\n    '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>'\n    '<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">'\n    '<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>'\n    '<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>'\n    '</Relationships>')\n# cellXfs: 0 normal | 1 bold + yellow (editable header) | 2 bold + grey (fixed header) | 3 grey (fixed cell)\n_STYLES = (\n    '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>'\n    '<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">'\n    '<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font>'\n    '<font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>'\n    '<fills count=\"4\"><fill><patternFill patternType=\"none\"/></fill>'\n    '<fill><patternFill patternType=\"gray125\"/></fill>'\n    '<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFD9D9D9\"/><bgColor indexed=\"64\"/></patternFill></fill>'\n    '<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFFF2CC\"/><bgColor indexed=\"64\"/></patternFill></fill></fills>'\n    '<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'\n    '<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>'\n    '<cellXfs count=\"4\">'\n    '<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>'\n    '<xf numFmtId=\"0\" fontId=\"1\" fillId=\"3\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\"/>'\n    '<xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\"/>'\n    '<xf numFmtId=\"0\" fontId=\"0\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFill=\"1\"/>'\n    '</cellXfs>'\n    '<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>'\n    '</styleSheet>')\n\n\ndef col_letter(i):\n    s = \"\"\n    i += 1\n    while i:\n        i, r = divmod(i - 1, 26)\n        s = chr(65 + r) + s\n    return s\n\n\ndef col_index(ref):\n    n = 0\n    for ch in ref:\n        if not ch.isalpha():\n            break\n        n = n * 26 + (ord(ch.upper()) - 64)\n    return n - 1\n\n\ndef text_width(s):\n    return sum(2 if ord(ch) > 255 else 1 for ch in s)\n\n\ndef write_xlsx(path, rows, n_fixed):\n    \"\"\"rows[0] is the header; the first n_fixed columns are shown grey (never imported).\"\"\"\n    ncols = max(len(r) for r in rows)\n    last = col_letter(ncols - 1)\n    widths = [8] * ncols\n    for r in rows:\n        for i, v in enumerate(r):\n            widths[i] = max(widths[i], min(60, text_width(v) + 2))\n    xml_rows = []\n    for ri, row in enumerate(rows, 1):\n        cells = []\n        for ci, v in enumerate(row):\n            if ri == 1:\n                style = 2 if ci < n_fixed else 1\n            else:\n                style = 3 if ci < n_fixed else 0\n            if v == \"\" and style == 0:\n                continue\n            attr = ' s=\"%d\"' % style if style else \"\"\n            cells.append('<c r=\"%s%d\" t=\"inlineStr\"%s><is><t xml:space=\"preserve\">%s</t></is></c>'\n                         % (col_letter(ci), ri, attr, escape(_XML_BAD.sub(\"\", v))))\n        xml_rows.append('<row r=\"%d\">%s</row>' % (ri, \"\".join(cells)))\n    cols = \"\".join('<col min=\"%d\" max=\"%d\" width=\"%d\" customWidth=\"1\"/>' % (i + 1, i + 1, w)\n                   for i, w in enumerate(widths))\n    sheet = (\n        '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>'\n        '<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">'\n        '<dimension ref=\"A1:%s%d\"/>'\n        '<sheetViews><sheetView workbookViewId=\"0\">'\n        '<pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/>'\n        '<selection pane=\"bottomLeft\"/></sheetView></sheetViews>'\n        '<sheetFormatPr defaultRowHeight=\"15\"/>'\n        '<cols>%s</cols><sheetData>%s</sheetData>'\n        '<autoFilter ref=\"A1:%s%d\"/></worksheet>'\n        % (last, len(rows), cols, \"\".join(xml_rows), last, len(rows)))\n    workbook = (\n        '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>'\n        '<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" '\n        'xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">'\n        '<sheets><sheet name=\"%s\" sheetId=\"1\" r:id=\"rId1\"/></sheets>'\n        '<definedNames><definedName name=\"_xlnm._FilterDatabase\" localSheetId=\"0\" hidden=\"1\">'\n        \"'%s'!$A$1:$%s$%d</definedName></definedNames></workbook>\"\n        % (SHEET_NAME, SHEET_NAME, last, len(rows)))\n    with zipfile.ZipFile(path, \"w\", zipfile.ZIP_DEFLATED) as z:\n        z.writestr(\"[Content_Types].xml\", _CONTENT_TYPES)\n        z.writestr(\"_rels/.rels\", _ROOT_RELS)\n        z.writestr(\"xl/workbook.xml\", workbook)\n        z.writestr(\"xl/_rels/workbook.xml.rels\", _WORKBOOK_RELS)\n        z.writestr(\"xl/styles.xml\", _STYLES)\n        z.writestr(\"xl/worksheets/sheet1.xml\", sheet)\n\n\ndef _rich_text(node):\n    \"\"\"Text of a shared string <si> or an inline <is>, without phonetic runs.\"\"\"\n    out = []\n    for ch in node:\n        if ch.tag == _MAIN + \"t\":\n            out.append(ch.text or \"\")\n        elif ch.tag == _MAIN + \"r\":\n            out.extend(t.text or \"\" for t in ch.findall(_MAIN + \"t\"))\n    return \"\".join(out)\n\n\ndef _fmt_num(v):\n    try:\n        f = float(v)\n        if f == int(f) and abs(f) < 1e15:\n            return str(int(f))\n        return \"%.12g\" % f\n    except (ValueError, OverflowError):\n        return v\n\n\ndef read_xlsx(path):\n    \"\"\"First worksheet of an .xlsx file as a list of rows (lists of str).\"\"\"\n    with zipfile.ZipFile(path) as z:\n        names = z.namelist()\n        shared = []\n        if \"xl/sharedStrings.xml\" in names:\n            root = ET.fromstring(z.read(\"xl/sharedStrings.xml\"))\n            shared = [_rich_text(si) for si in root.findall(_MAIN + \"si\")]\n        wb = ET.fromstring(z.read(\"xl/workbook.xml\"))\n        rels = ET.fromstring(z.read(\"xl/_rels/workbook.xml.rels\"))\n        rid = wb.find(_MAIN + \"sheets\")[0].get(_REL + \"id\")\n        target = [r.get(\"Target\") for r in rels if r.get(\"Id\") == rid][0]\n        target = target[1:] if target.startswith(\"/\") else \"xl/\" + target\n        sheet = ET.fromstring(z.read(target))\n    rows = []\n    for row in sheet.find(_MAIN + \"sheetData\"):\n        cells = {}\n        for c in row:\n            idx = col_index(c.get(\"r\") or \"\")\n            t = c.get(\"t\")\n            v = c.find(_MAIN + \"v\")\n            if t == \"inlineStr\":\n                val = _rich_text(c.find(_MAIN + \"is\")) if c.find(_MAIN + \"is\") is not None else \"\"\n            elif v is None or v.text is None:\n                val = \"\"\n            elif t == \"s\":\n                val = shared[int(v.text)]\n            elif t in (\"str\", \"b\"):\n                val = v.text\n            elif t == \"e\":\n                val = \"\"\n            else:\n                val = _fmt_num(v.text)\n            cells[idx] = val\n        width = max(cells) + 1 if cells else 0\n        rows.append([cells.get(i, \"\") for i in range(width)])\n    return rows\n# ---- end xlsx ----\n\n\n# ---- value helpers ----\ndef num_prefix(s):\n    m = re.match(r\"^[-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?\", s)\n    if not m:\n        return None, s\n    return float(m.group(0)), s[m.end():]\n\n\ndef same_number_text(a, b):\n    \"\"\"True when two display strings mean the same value ('1,200 mm' == '1200mm').\"\"\"\n    na = re.sub(r\"[\\s,]\", \"\", a or \"\")\n    nb = re.sub(r\"[\\s,]\", \"\", b or \"\")\n    if na == nb:\n        return True\n    fa, ta = num_prefix(na)\n    fb, tb = num_prefix(nb)\n    return fa is not None and fb is not None and ta == tb and abs(fa - fb) < 1e-9\n\n\ndef parse_yes_no(text):\n    low = text.strip().lower()\n    if low in YES:\n        return 1\n    if low in NO:\n        return 0\n    return None\n# ---- end value helpers ----\n\n\ndef eid(el):\n    i = el.Id\n    try:\n        return int(i.Value)\n    except AttributeError:\n        return int(i.IntegerValue)\n\n\ndef make_id(n):\n    try:\n        return ElementId(Int64(n))\n    except Exception:\n        return ElementId(n)\n\n\ndef is_yesno(p):\n    try:\n        return p.Definition.GetDataType().Equals(SpecTypeId.Boolean.YesNo)\n    except Exception:\n        return False\n\n\ndef param_text(p):\n    \"\"\"Text written to the sheet, or None for parameter types that are not supported.\"\"\"\n    st = p.StorageType\n    if st == StorageType.String:\n        return p.AsString() or \"\"\n    if st == StorageType.Integer:\n        if not p.HasValue:\n            return \"\"\n        if is_yesno(p):\n            return \"是\" if p.AsInteger() else \"否\"\n        return str(p.AsInteger())\n    if st == StorageType.Double:\n        return (p.AsValueString() or \"\") if p.HasValue else \"\"\n    return None\n\n\ndef evaluate(p, text):\n    \"\"\"-> (action, new value); action is 'same', 'set', 'bad' or 'unsupported'.\"\"\"\n    st = p.StorageType\n    if st == StorageType.String:\n        return (\"same\" if (p.AsString() or \"\") == text else \"set\"), text\n    if st == StorageType.Integer:\n        if is_yesno(p):\n            v = parse_yes_no(text)\n            if v is None:\n                return \"bad\", None\n        else:\n            try:\n                f = float(text)\n            except ValueError:\n                return \"bad\", None\n            if f != int(f):\n                return \"bad\", None\n            v = int(f)\n        cur = p.AsInteger() if p.HasValue else None\n        return (\"same\" if cur == v else \"set\"), v\n    if st == StorageType.Double:\n        cur = p.AsValueString() if p.HasValue else \"\"\n        return (\"same\" if same_number_text(cur, text) else \"set\"), text\n    return \"unsupported\", None\n\n\ndef apply_value(p, new):\n    st = p.StorageType\n    if st == StorageType.String:\n        p.Set.Overloads[String](new)\n        return True\n    if st == StorageType.Integer:\n        p.Set.Overloads[Int32](new)\n        return True\n    return bool(p.SetValueString(new))\n\n\ndef resolve_categories(names):\n    found, bad = [], []\n    for n in names:\n        bic = getattr(BuiltInCategory, n, None) or getattr(BuiltInCategory, \"OST_\" + n, None)\n        if bic is None:\n            bad.append(n)\n        else:\n            found.append(bic)\n    return found, bad\n\n\ndef collect_elements(bics):\n    els = []\n    for bic in bics:\n        els.extend(FilteredElementCollector(doc).OfCategory(bic).WhereElementIsNotElementType())\n    return els\n\n\ndef level_name(el):\n    try:\n        lid = el.LevelId\n        if lid is None or lid == ElementId.InvalidElementId:\n            p = el.get_Parameter(BuiltInParameter.SCHEDULE_LEVEL_PARAM)\n            lid = p.AsElementId() if p is not None else None\n        if lid is not None and lid != ElementId.InvalidElementId:\n            lv = doc.GetElement(lid)\n            return lv.Name if lv is not None else \"\"\n    except Exception:\n        pass\n    return \"\"\n\n\ndef type_info(el):\n    t = doc.GetElement(el.GetTypeId())\n    if t is None:\n        return \"\", \"\"\n    try:\n        fam = t.FamilyName\n    except Exception:\n        fam = \"\"\n    return fam, t.Name\n\n\ndef writable_parameter_names(elements):\n    names, seen, per_cat = [], set(FIXED), {}\n    for el in elements:\n        cat = el.Category.Name if el.Category is not None else \"\"\n        per_cat[cat] = per_cat.get(cat, 0) + 1\n        if per_cat[cat] > SAMPLE_PER_CATEGORY:\n            continue\n        for p in el.Parameters:\n            if p.IsReadOnly or p.Definition is None:\n                continue\n            if p.StorageType not in (StorageType.String, StorageType.Integer, StorageType.Double):\n                continue\n            n = p.Definition.Name\n            if n and n not in seen:\n                seen.add(n)\n                names.append(n)\n    return names\n\n\ndef run_export():\n    report = []\n    names = CATEGORIES or DEFAULT_CATEGORIES\n    bics, bad = resolve_categories(names)\n    report += [\"[UNKNOWN category] \" + n for n in bad]\n    elements = collect_elements(bics)\n    if not elements:\n        return report + [\"[NO ELEMENTS] check the category list\"]\n    pnames = PARAM_NAMES or writable_parameter_names(elements)\n    rows = [FIXED + pnames]\n    infos = []\n    for el in elements:\n        fam, typ = type_info(el)\n        infos.append((el.Category.Name if el.Category is not None else \"\", fam, typ, eid(el), el))\n    infos.sort(key=lambda x: (x[0], x[1], x[2], x[3]))\n    for cat, fam, typ, i, el in infos:\n        row = [el.UniqueId, str(i), cat, fam, typ, level_name(el)]\n        for n in pnames:\n            p = el.LookupParameter(n)\n            text = param_text(p) if p is not None else None\n            row.append(text or \"\")\n        rows.append(row)\n    write_xlsx(XLSX_PATH, rows, len(FIXED))\n    report.append(\"[EXPORT OK] %d elements, %d parameter columns -> %s\" % (len(elements), len(pnames), XLSX_PATH))\n    report.append(\"Parameters: \" + \", \".join(pnames))\n    return report\n\n\ndef run_import():\n    report = []\n    rows = read_xlsx(XLSX_PATH)\n    if not rows:\n        return [\"[EMPTY sheet] \" + XLSX_PATH]\n    header = [h.strip() for h in rows[0]]\n    col_uid = header.index(\"UniqueId\") if \"UniqueId\" in header else -1\n    col_id = header.index(\"ElementId\") if \"ElementId\" in header else -1\n    if col_uid < 0 and col_id < 0:\n        return [\"[ERROR] header needs a UniqueId or ElementId column\"]\n    pcols = [(i, h) for i, h in enumerate(header)\n             if h and h not in FIXED and (not PARAM_NAMES or h in PARAM_NAMES)]\n    counts = {\"rows\": 0, \"notfound\": 0, \"blank\": 0, \"same\": 0, \"set\": 0, \"bad\": 0,\n              \"noparam\": 0, \"readonly\": 0, \"unsupported\": 0, \"failed\": 0}\n    plan, samples = [], []\n\n    def cell(row, i):\n        return row[i].strip() if 0 <= i < len(row) else \"\"\n\n    for row in rows[1:]:\n        uid, eid_text = cell(row, col_uid), cell(row, col_id)\n        if not uid and not eid_text:\n            continue\n        counts[\"rows\"] += 1\n        el = None\n        try:\n            el = doc.GetElement(uid) if uid else doc.GetElement(make_id(int(float(eid_text))))\n        except Exception:\n            el = None\n        if el is None:\n            counts[\"notfound\"] += 1\n            continue\n        for i, name in pcols:\n            text = cell(row, i)\n            if text == \"\":\n                counts[\"blank\"] += 1\n                continue\n            p = el.LookupParameter(name)\n            if p is None:\n                counts[\"noparam\"] += 1\n                continue\n            if p.IsReadOnly:\n                counts[\"readonly\"] += 1\n                continue\n            action, new = evaluate(p, text)\n            if action in (\"same\", \"bad\", \"unsupported\"):\n                counts[action] += 1\n                continue\n            plan.append((el, p, new))\n            if len(samples) < 40:\n                samples.append(\"    [%d] %s: '%s' -> '%s'\" % (eid(el), name, param_text(p), text))\n\n    if RUN and plan:\n        TransactionManager.Instance.EnsureInTransaction(doc)\n        for el, p, new in plan:\n            try:\n                if apply_value(p, new):\n                    counts[\"set\"] += 1\n                else:\n                    counts[\"bad\"] += 1\n            except Exception:\n                counts[\"failed\"] += 1\n        TransactionManager.Instance.TransactionTaskDone()\n    else:\n        counts[\"set\"] = len(plan)\n\n    verb = \"已寫入\" if RUN else \"將寫入\"\n    report.append(\"[%s] %s\" % (\"IMPORT OK\" if RUN else \"DRY RUN (nothing is changed)\", XLSX_PATH))\n    report.append(\"  資料列 %d, 找不到元件 %d\" % (counts[\"rows\"], counts[\"notfound\"]))\n    report.append(\"  %s %d, 相同 %d, 空白略過 %d, 值無法解析 %d, 無此參數 %d, 唯讀 %d, 不支援型別 %d, 失敗 %d\"\n                  % (verb, counts[\"set\"], counts[\"same\"], counts[\"blank\"], counts[\"bad\"],\n                     counts[\"noparam\"], counts[\"readonly\"], counts[\"unsupported\"], counts[\"failed\"]))\n    if samples:\n        report.append(\"  變更範例 (最多 40 筆):\")\n        report += samples\n    return report\n\n\nif not XLSX_PATH:\n    report = [\"[ERROR] IN[1] needs the .xlsx path\"]\nelif MODE == \"export\":\n    try:\n        report = run_export()\n    except Exception as ex:\n        report = [\"[ERROR export] %s (is the file open in Excel?)\" % ex]\nelif MODE == \"import\":\n    if not os.path.isfile(XLSX_PATH):\n        report = [\"[ERROR] file not found: \" + XLSX_PATH]\n    else:\n        try:\n            report = run_import()\n        except Exception as ex:\n            report = [\"[ERROR import] %s\" % ex]\nelse:\n    report = ['[ERROR] IN[0] must be \"export\" or \"import\"']\n\ntry:\n    with open(os.path.join(os.environ.get('TEMP'), 'ExcelSync_last_report.txt'), 'w', encoding='utf-8') as fh:\n        fh.write(\"\\n\".join(report))\nexcept Exception:\n    pass\n\nOUT = report\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "aef32ee3c3e14b238b495e5fa2982731",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "a76a88bfa698485889c063c730823466",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "3dfe4f9bbd6a4a88a7b5f7fd468e6068",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4560bf8208e5476da495c7a77c868501",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "6a9335970e574cb5b124eafd4b8da1f0",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "36eb9196342546acb0f0fcf5ac81eb7b",
+          "Name": "IN[4]",
+          "Description": "Input #4",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "75da4d9ae3984201a645552eeae93504",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "執行嵌入的 Python 指令碼。"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 600.0,
+      "WatchHeight": 400.0,
+      "Id": "29bc3dddecc846cab1857f58e8f17cc2",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "9580d5f06bbf47bf804e895f7c0c268b",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "e07baaf2a20d4f7aa77131f9ec781792",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "視覺化節點的輸出"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "978c1421d7254695bb3ce3cb7a406a11",
+      "End": "a76a88bfa698485889c063c730823466",
+      "Id": "41635627c9fe4039bba20ada922bfab9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "303873be97e94390b8781984308a2956",
+      "End": "3dfe4f9bbd6a4a88a7b5f7fd468e6068",
+      "Id": "ece5625b3ea64164a0a07ef2b8295d08",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "39bb944ecb7c4880a4ba879ebb59ed42",
+      "End": "4560bf8208e5476da495c7a77c868501",
+      "Id": "c90a95a8befd44b3a639c965accd2dc6",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "2eedfacea05e4a4d94852b67f0e9df7f",
+      "End": "6a9335970e574cb5b124eafd4b8da1f0",
+      "Id": "99411dbb39b743848ab6729a2cb5bfed",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "76f15face3b545e29e5dc06da5543174",
+      "End": "36eb9196342546acb0f0fcf5ac81eb7b",
+      "Id": "8620d419a4e34a1c90a931acbeb91c7c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "75da4d9ae3984201a645552eeae93504",
+      "End": "9580d5f06bbf47bf804e895f7c0c268b",
+      "Id": "c9e528418f3f44158f336fd77e50ccb6",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": null,
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "性質",
+      "Version": "3.3",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "8.2",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "無",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.2.11986",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "背景預覽(_B)",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "339ca312b65e48cc9578ee98b369ae9f",
+        "Name": "Mode: \"export\" or \"import\"",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "ab749f21f9a549b1bb5c545b1b695055",
+        "Name": "xlsx path",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 150.0
+      },
+      {
+        "Id": "25527fdee5e14e83ad3dd81bb64daf59",
+        "Name": "Categories (empty = SCADA categories)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "b1f91545f4944c1e885f16856c54ebed",
+        "Name": "Parameter names (empty = all writable)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 450.0
+      },
+      {
+        "Id": "5263e292a675451e81f1d1d9050e97a3",
+        "Name": "Run? False = dry run (import)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 600.0
+      },
+      {
+        "Id": "aef32ee3c3e14b238b495e5fa2982731",
+        "Name": "Excel Revit Sync",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 450.0,
+        "Y": 120.0
+      },
+      {
+        "Id": "29bc3dddecc846cab1857f58e8f17cc2",
+        "Name": "Report",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 800.0,
+        "Y": 120.0
+      }
+    ],
+    "Annotations": [],
+    "X": 100.0,
+    "Y": 100.0,
+    "Zoom": 0.9
+  }
+}

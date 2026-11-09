@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "source_file": "D:\\fake\\FAKE-ESC-TEST-STATION.rvt",
+  "elements": [
+    {"element_id": 2001001, "category": "OST_Conduit", "family_name": "FAKE 電管",
+     "parameters": {"服務類型": "SCADA"}, "read_only_parameters": []},
+    {"element_id": 2001002, "category": "OST_Conduit", "family_name": "FAKE 電管",
+     "parameters": {"服務類型": ""}, "read_only_parameters": []},
+    {"element_id": 2001003, "category": "OST_Conduit", "family_name": "FAKE 電管",
+     "parameters": {"服務類型": "scada "}, "read_only_parameters": []},
+    {"element_id": 2001004, "category": "OST_Conduit", "family_name": "FAKE 電管",
+     "parameters": {"服務類型": "Power"}, "read_only_parameters": []},
+    {"element_id": 2001005, "category": "OST_Conduit", "family_name": "FAKE 電管",
+     "parameters": {}, "read_only_parameters": []},
+    {"element_id": 2001006, "category": "OST_Conduit", "family_name": "FAKE 電管",
+     "parameters": {}, "read_only_parameters": [], "read_error": "FAKE: 讀取參數時發生例外"},
+    {"element_id": 2002001, "category": "OST_CableTray", "family_name": "FAKE 電纜架",
+     "parameters": {"服務類型": "SCADA"}, "read_only_parameters": []},
+    {"element_id": 2003001, "category": "OST_ElectricalEquipment", "family_name": "FAKE 配電箱",
+     "parameters": {"備註": "SCADA"}, "read_only_parameters": []},
+    {"element_id": 2003002, "category": "OST_ElectricalEquipment", "family_name": "FAKE 配電箱",
+     "parameters": {"備註": "待確認"}, "read_only_parameters": []},
+    {"element_id": 2003003, "category": "OST_ElectricalEquipment", "family_name": "FAKE 配電箱",
+     "parameters": {"備註": "SCADA"}, "read_only_parameters": ["備註"]},
+    {"element_id": 2003004, "category": "OST_ElectricalEquipment", "family_name": "FAKE 配電箱",
+     "parameters": {"備註": "scada"}, "read_only_parameters": ["備註"]},
+    {
+      "element_id": 2004001, "category": "OST_ElectricalEquipment", "family_name": "SCADA_機櫃_FAKE-R01",
+      "parameters": {
+        "SCADA_編號": "FAKE-R01", "SCADA_期別": "P1", "SCADA_站點": "FAKE站", "SCADA_建物": "FAKE棟",
+        "SCADA_房間": "FAKE機房", "SCADA_機櫃類型": "FAKE型", "SCADA_寬mm": "800", "SCADA_深mm": "1000",
+        "SCADA_高mm": "2000", "SCADA_尺寸": "800x1000x2000", "SCADA_附錄D項次": "", "SCADA_UPS電源110V": "",
+        "SCADA_附錄F項次": "", "SCADA_來源文件": "FAKE.pdf", "SCADA_備註": "FAKE站 FAKE機房 FAKE型",
+        "SCADA_定位來源": "FAKE"
+      },
+      "read_only_parameters": []
+    },
+    {
+      "element_id": 2004002, "category": "OST_ElectricalEquipment", "family_name": "SCADA_機櫃_FAKE-R02",
+      "parameters": {
+        "SCADA_編號": "FAKE-R02", "SCADA_期別": "P1", "SCADA_站點": "", "SCADA_建物": "FAKE棟",
+        "SCADA_房間": "FAKE機房", "SCADA_機櫃類型": "FAKE型", "SCADA_寬mm": "800", "SCADA_深mm": "1000",
+        "SCADA_高mm": "2000", "SCADA_尺寸": "800x1000x2000", "SCADA_附錄D項次": "", "SCADA_UPS電源110V": "",
+        "SCADA_附錄F項次": "", "SCADA_來源文件": "FAKE.pdf", "SCADA_定位來源": "FAKE"
+      },
+      "read_only_parameters": []
+    },
+    {
+      "element_id": 2004003, "category": "OST_ElectricalEquipment", "family_name": "SCADA_機櫃_FAKE:R03",
+      "parameters": {
+        "SCADA_編號": "FAKE-R03", "SCADA_期別": "P1", "SCADA_站點": "FAKE站", "SCADA_建物": "FAKE棟",
+        "SCADA_房間": "FAKE機房", "SCADA_機櫃類型": "FAKE型", "SCADA_寬mm": "800", "SCADA_深mm": "1000",
+        "SCADA_高mm": "2000", "SCADA_尺寸": "800x1000x2000", "SCADA_附錄D項次": "", "SCADA_UPS電源110V": "",
+        "SCADA_附錄F項次": "", "SCADA_來源文件": "FAKE.pdf", "SCADA_備註": "", "SCADA_定位來源": "FAKE"
+      },
+      "read_only_parameters": []
+    },
+    {"element_id": 2009001, "category": "OST_Walls", "family_name": "FAKE 牆",
+     "parameters": {}, "read_only_parameters": []}
+  ]
+}

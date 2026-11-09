@@ -1,0 +1,287 @@
+{
+  "Uuid": "16da8f01-4632-4ca3-949f-f428d632d36a",
+  "IsCustomNode": false,
+  "Description": "Batch assign elements to worksets in many workshared RVT files",
+  "Name": "BatchWorksets",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.Directory, CoreNodeModels",
+      "Id": "9160c56bda724c62b337a2c8b1abd534",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "9ec7e41c15534843b4457b3b7d0b7296",
+          "Name": "",
+          "Description": "Directory path.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "可讓您選取系統上的目錄，並傳回其路徑",
+      "HintPath": "C:\\Users\\user\\Downloads\\VT_Test",
+      "InputValue": "C:\\Users\\user\\Downloads\\VT_Test"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "2aef810ef2074c7fa2664c95807692a3",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "acfe313ff6c6435184cc2a28e24d9628",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "[];"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "6cdec2ee25974f52ad2c9a027df30d36",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "2fa5378551354b69b7b650680ee7f6ea",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "啟用在 True 與 False 之間選取",
+      "InputValue": false
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Batch assign elements to worksets in every workshared .rvt file of a folder.\n#\n# IN[0]: folder path (string) or list of .rvt paths\n# IN[1]: rules (list of text); empty list = DEFAULT_RULES below. One rule per text:\n#            類別 -> 工作集名稱\n#            類別 | 參數名=值 -> 工作集名稱\n#        e.g.   \"OST_Conduit -> SCADA_管線\"\n#               \"OST_ElectricalEquipment | 備註=SCADA -> SCADA_設備\"\n#        The optional condition (parameter = value, case-insensitive) limits the rule to the\n#        elements that carry that value, so other disciplines' elements in the same file are\n#        left alone. Alternative parameter names are separated by \"/\": \"服務類型/Service Type=SCADA\".\n# IN[2]: True  = write and synchronize each file\n#        False = dry run: each file is opened detached (nothing is saved, central is not touched)\n#\n# Rules (never destructive):\n#   - a missing workset is created (new worksets are visible by default)\n#   - elements already in the target workset are left alone\n#   - elements owned by another user, or whose workset cannot be changed, are counted, not changed\n#   - a target workset that another user has checked out is skipped and reported\n#   - non-workshared files are skipped (this script never turns worksharing on)\nimport clr, os, re, uuid, shutil\n\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\nfrom System import Int32\nfrom System.Collections.Generic import List\n\ndoc = DocumentManager.Instance.CurrentDBDocument\napp = doc.Application\n\nsrc_in = IN[0]\nRULE_TEXTS = [str(r).strip() for r in IN[1] if str(r).strip()] if len(IN) > 1 and IN[1] else []\nRUN = bool(IN[2]) if len(IN) > 2 else False\n\n# Used when IN[1] is empty. Edit the workset names to match your project standard.\nDEFAULT_RULES = [\n    \"OST_Conduit | 服務類型/Service Type=SCADA -> SCADA_管線\",\n    \"OST_ConduitFitting | 服務類型/Service Type=SCADA -> SCADA_管線\",\n    \"OST_CableTray | 服務類型/Service Type=SCADA -> SCADA_管線\",\n    \"OST_CableTrayFitting | 服務類型/Service Type=SCADA -> SCADA_管線\",\n    \"OST_ElectricalEquipment | 備註/Comments=SCADA -> SCADA_設備\",\n    \"OST_ElectricalFixtures | 備註/Comments=SCADA -> SCADA_設備\",\n    \"OST_Wire | 備註/Comments=SCADA -> SCADA_設備\",\n]\n# Safety: only files whose name contains this text are processed (\"\" = no check).\nFILE_NAME_MUST_CONTAIN = \"-ESC-\"\n\n\n# ---- pure helpers (no Revit API) ----\ndef parse_rule(text):\n    \"\"\"-> (category name, (parameter names, value) or None, workset name).\"\"\"\n    if \"->\" not in text:\n        raise ValueError('missing \"->\" in rule: ' + text)\n    left, ws = text.rsplit(\"->\", 1)\n    ws = ws.strip()\n    flt = None\n    if \"|\" in left:\n        left, cond = left.split(\"|\", 1)\n        if \"=\" not in cond:\n            raise ValueError('condition needs \"parameter=value\": ' + text)\n        pname, pval = cond.split(\"=\", 1)\n        names = tuple(n.strip() for n in pname.split(\"/\") if n.strip())\n        if not names:\n            raise ValueError(\"empty parameter name: \" + text)\n        flt = (names, pval.strip())\n    cat = left.strip()\n    if not cat or not ws:\n        raise ValueError(\"empty category or workset name: \" + text)\n    return cat, flt, ws\n# ---- end pure helpers ----\n\n\ndef norm(p):\n    return os.path.normcase(os.path.abspath(p))\n\n\ndef to_list(x):\n    if x is None:\n        return []\n    if isinstance(x, str):\n        if not x.strip():\n            return []\n        if os.path.isdir(x):\n            return [os.path.join(x, f) for f in sorted(os.listdir(x))\n                    if f.lower().endswith('.rvt')\n                    and not re.search(r'\\.\\d{4}\\.rvt$', f, re.I)]  # skip backups\n        return [x]\n    return [str(p) for p in x if p]\n\n\ndef doc_paths(d):\n    \"\"\"File path of a document plus its central model path (if workshared).\"\"\"\n    paths = set()\n    if d.PathName:\n        paths.add(norm(d.PathName))\n    if d.IsWorkshared:\n        try:\n            central = ModelPathUtils.ConvertModelPathToUserVisiblePath(\n                d.GetWorksharingCentralModelPath())\n            if central:\n                paths.add(norm(central))\n        except Exception:\n            pass\n    return paths\n\n\nNS = \"BatchWorkset_\" + uuid.uuid4().hex  # unique namespace so re-runs don't clash\nfail_msgs = []\n\n\nclass SuppressWarnings(IFailuresPreprocessor):\n    \"\"\"Delete warnings silently; roll back on errors instead of showing a dialog.\"\"\"\n    __namespace__ = NS\n\n    def PreprocessFailures(self, accessor):\n        has_error = False\n        for f in accessor.GetFailureMessages():\n            if f.GetSeverity() == FailureSeverity.Warning:\n                accessor.DeleteWarning(f)\n            else:\n                has_error = True\n                fail_msgs.append(f.GetDescriptionText())\n        if has_error:\n            return FailureProcessingResult.ProceedWithRollBack\n        return FailureProcessingResult.Continue\n\n\ndef version_ok(info):\n    fmt = getattr(info, 'Format', None) or info.SavedInVersion\n    return str(app.VersionNumber) in str(fmt)\n\n\ndef open_target(path, info, write):\n    \"\"\"Return (document, temp local path or None). All worksets are opened so that no element\n    is silently missed. A dry run is opened detached: no local file, central never touched.\"\"\"\n    mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(path)\n    opts = OpenOptions()\n    local = None\n    if info.IsWorkshared:\n        opts.SetOpenWorksetsConfiguration(\n            WorksetConfiguration(WorksetConfigurationOption.OpenAllWorksets))\n        if not write:\n            opts.DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets\n        else:\n            opts.DetachFromCentralOption = DetachFromCentralOption.DoNotDetach\n            if info.IsCentral:\n                local = os.path.join(os.environ.get('TEMP'),\n                                     'BatchWorkset_%s_%s' % (uuid.uuid4().hex[:8], os.path.basename(path)))\n                local_mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(local)\n                WorksharingUtils.CreateNewLocal(mp, local_mp)\n                mp = local_mp\n    return app.OpenDocumentFile(mp, opts), local\n\n\ndef remove_temp_local(local):\n    if not local:\n        return\n    try:\n        if os.path.exists(local):\n            os.remove(local)\n        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)\n    except Exception:\n        pass\n\n\ndef save(tdoc):\n    swc = SynchronizeWithCentralOptions()\n    swc.SetRelinquishOptions(RelinquishOptions(True))\n    swc.Comment = \"Batch assign worksets\"\n    tdoc.SynchronizeWithCentral(TransactWithCentralOptions(), swc)\n\n\ndef id_int(i):\n    try:\n        return int(i.Value)\n    except AttributeError:\n        return int(i.IntegerValue)\n\n\ndef eid(el):\n    return id_int(el.Id)\n\n\ndef text_param(el, names):\n    for n in names:\n        p = el.LookupParameter(n)\n        if p is not None:\n            if p.StorageType == StorageType.String:\n                return (p.AsString() or \"\").strip()\n            return (p.AsValueString() or \"\").strip()\n    return \"\"\n\n\ndef ensure_editable(tdoc, ws):\n    \"\"\"True when the workset is editable by the current user (tries to check it out).\"\"\"\n    if ws.IsEditable:\n        return True\n    try:\n        WorksharingUtils.CheckoutWorksets(tdoc, List[WorksetId]([ws.Id]))\n    except Exception:\n        pass\n    return tdoc.GetWorksetTable().GetWorkset(ws.Id).IsEditable\n\n\ndef process(tdoc, write):\n    \"\"\"Returns (report lines, number of elements moved).\"\"\"\n    if not tdoc.IsWorkshared:\n        return [\"    [SKIP not workshared]\"], 0\n    existing = dict((w.Name, w) for w in FilteredWorksetCollector(tdoc).OfKind(WorksetKind.UserWorkset))\n    lines = [\"    現有工作集: \" + (\", \".join(sorted(existing)) or \"(none)\")]\n\n    plan = {}  # workset name -> [elements that must move]\n    for cat_name, flt, ws_name in RULES:\n        bic = getattr(BuiltInCategory, cat_name, None) or getattr(BuiltInCategory, \"OST_\" + cat_name, None)\n        if bic is None:\n            lines.append(\"    [UNKNOWN category] \" + cat_name)\n            continue\n        target = existing.get(ws_name)\n        target_id = target.Id.IntegerValue if target is not None else None\n        c = {\"move\": 0, \"already\": 0, \"filtered\": 0, \"nows\": 0}\n        for el in FilteredElementCollector(tdoc).OfCategory(bic).WhereElementIsNotElementType():\n            if flt is not None and text_param(el, flt[0]).upper() != flt[1].upper():\n                c[\"filtered\"] += 1\n                continue\n            if el.WorksetId.IntegerValue < 0:\n                c[\"nows\"] += 1\n                continue\n            if target_id is not None and el.WorksetId.IntegerValue == target_id:\n                c[\"already\"] += 1\n                continue\n            plan.setdefault(ws_name, []).append(el)\n            c[\"move\"] += 1\n        cond = \"\" if flt is None else \" | %s=%s\" % (\"/\".join(flt[0]), flt[1])\n        lines.append(\"    %s%s -> %s: %s %d, 已在目標工作集 %d, 不符條件 %d, 無工作集 %d\"\n                     % (cat_name, cond, ws_name, \"移動\" if write else \"將移動\", c[\"move\"],\n                        c[\"already\"], c[\"filtered\"], c[\"nows\"]))\n    if not plan:\n        return lines, 0\n\n    missing = [n for n in plan if n not in existing]\n    if missing:\n        lines.append(\"    %s工作集: %s\" % (\"建立\" if write else \"將建立\", \", \".join(missing)))\n    if not write:\n        return lines, 0\n\n    # Check out what we need before the transaction\n    blocked = set()\n    for name in plan:\n        if name in existing and not ensure_editable(tdoc, existing[name]):\n            blocked.add(name)\n            lines.append(\"    [SKIP workset checked out by another user] %s (%s)\" % (name, existing[name].Owner))\n    owned = None\n    try:\n        ids = List[ElementId]([el.Id for n, els in plan.items() if n not in blocked for el in els])\n        owned = set(id_int(i) for i in WorksharingUtils.CheckoutElements(tdoc, ids))\n    except Exception:\n        owned = None  # fall back: try every element and count the failures\n\n    del fail_msgs[:]\n    moved_total = 0\n    t = Transaction(tdoc, \"Batch assign worksets\")\n    t.Start()\n    try:\n        for name, els in plan.items():\n            if name in blocked:\n                continue\n            ws = existing.get(name)\n            if ws is None:\n                try:\n                    ws = Workset.Create(tdoc, name)\n                except Exception as ex:\n                    lines.append(\"    [ERROR create workset] %s: %s\" % (name, ex))\n                    continue\n                existing[name] = ws\n            moved = locked = other = 0\n            for el in els:\n                if owned is not None and eid(el) not in owned:\n                    other += 1\n                    continue\n                p = el.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)\n                if p is None or p.IsReadOnly:\n                    locked += 1\n                    continue\n                try:\n                    p.Set.Overloads[Int32](ws.Id.IntegerValue)\n                    moved += 1\n                except Exception:\n                    locked += 1\n            moved_total += moved\n            lines.append(\"    → %s: 已移動 %d, 他人持有 %d, 無法變更(群組/唯讀) %d\" % (name, moved, other, locked))\n        fho = t.GetFailureHandlingOptions()\n        fho.SetFailuresPreprocessor(SuppressWarnings())\n        fho.SetClearAfterRollback(True)\n        status = t.Commit(fho)\n        if status != TransactionStatus.Committed:\n            raise Exception(\"rolled back: \" + \"; \".join(fail_msgs))\n    except Exception:\n        if t.HasStarted() and not t.HasEnded():\n            t.RollBack()\n        raise\n    return lines, moved_total\n\n\nreport = []\nRULES = []\ntry:\n    RULES = [parse_rule(t) for t in (RULE_TEXTS or DEFAULT_RULES)]\nexcept ValueError as ex:\n    report.append(\"[ERROR rule] %s\" % ex)\n\nif RULES:\n    report.append(\"Mode: %s | %d rules%s\" % (\"WRITE\" if RUN else \"DRY RUN (nothing is saved)\", len(RULES),\n                                             \"\" if RULE_TEXTS else \" (DEFAULT_RULES)\"))\n    # The current document is never a target; documents already open or loaded as links cannot be reopened\n    src_paths = doc_paths(doc)\n    open_paths = set()\n    for d in app.Documents:\n        open_paths |= doc_paths(d)\n    open_paths -= src_paths\n\n    targets = [p for p in to_list(src_in) if norm(p) not in src_paths]\n    if not targets:\n        report.append(\"[NO TARGET FILES] check IN[0] folder path\")\n\n    # Close Dynamo's own transaction before opening other documents\n    TransactionManager.Instance.ForceCloseTransaction()\n    for p in targets:\n        if norm(p) in open_paths:\n            report.append(\"[SKIP already open or loaded as link - unload it first] \" + p)\n            continue\n        if FILE_NAME_MUST_CONTAIN and FILE_NAME_MUST_CONTAIN.upper() not in os.path.basename(p).upper():\n            report.append(\"[SKIP file name has no '%s' - not a SCADA file] %s\" % (FILE_NAME_MUST_CONTAIN, p))\n            continue\n        try:\n            info = BasicFileInfo.Extract(p)\n        except Exception as ex:\n            report.append(\"[ERROR read] %s: %s\" % (p, ex))\n            continue\n        if not version_ok(info):\n            report.append(\"[SKIP version mismatch] \" + p)\n            continue\n        if not info.IsWorkshared:\n            report.append(\"[SKIP not workshared] \" + p)\n            continue\n        tdoc, local = None, None\n        try:\n            tdoc, local = open_target(p, info, RUN)\n            lines, moved = process(tdoc, RUN)\n            if RUN and moved > 0:\n                save(tdoc)\n            tag = \"[DRY RUN]\" if not RUN else (\"[OK]\" if moved > 0 else \"[OK nothing to change]\")\n            report.append(\"%s %s\" % (tag, p))\n            report += lines\n        except Exception as ex:\n            report.append(\"[ERROR] %s: %s\" % (p, ex))\n        finally:\n            if tdoc is not None:\n                tdoc.Close(False)\n            remove_temp_local(local)\n\n# The Watch node truncates long lines, so keep the full report in a text file as well\ntry:\n    with open(os.path.join(os.environ.get('TEMP'), 'BatchWorksets_last_report.txt'), 'w', encoding='utf-8') as fh:\n        fh.write(\"\\n\".join(report))\nexcept Exception:\n    pass\n\nOUT = report\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "d4aa8b54adda49a88a8f51c8dca53bff",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "55225f0460d049babbec09fd39de3392",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "ce335a82b0094b999d94449d168337c8",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4ebef0da4bc2439d9bc5b6aa06e7f329",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "8ba0fa30ae884ec88928c196a3f26c28",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "執行嵌入的 Python 指令碼。"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 600.0,
+      "WatchHeight": 400.0,
+      "Id": "47c352fbf3a44677a3736dac727fa5ec",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "169e49a7239e4ecea76c6fd41005a215",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "91c2c4ce5f7f4bd69a6b4c48fede19a2",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "視覺化節點的輸出"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "9ec7e41c15534843b4457b3b7d0b7296",
+      "End": "55225f0460d049babbec09fd39de3392",
+      "Id": "f3405072b5fd4709aa0c655d6a458c19",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "acfe313ff6c6435184cc2a28e24d9628",
+      "End": "ce335a82b0094b999d94449d168337c8",
+      "Id": "e90740bf2acc49289cfadd94747ef896",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "2fa5378551354b69b7b650680ee7f6ea",
+      "End": "4ebef0da4bc2439d9bc5b6aa06e7f329",
+      "Id": "55e972982e1b4d6a908e2cc049f7b7f6",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "8ba0fa30ae884ec88928c196a3f26c28",
+      "End": "169e49a7239e4ecea76c6fd41005a215",
+      "Id": "13138edfd8824e4793f3c488c5dc85a5",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": null,
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "性質",
+      "Version": "3.3",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "8.2",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "無",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.2.11986",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "背景預覽(_B)",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "9160c56bda724c62b337a2c8b1abd534",
+        "Name": "Directory Path (target folder)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "2aef810ef2074c7fa2664c95807692a3",
+        "Name": "Rules (empty = DEFAULT_RULES in script)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 150.0
+      },
+      {
+        "Id": "6cdec2ee25974f52ad2c9a027df30d36",
+        "Name": "Run? False = dry run",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "d4aa8b54adda49a88a8f51c8dca53bff",
+        "Name": "Batch Worksets",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 450.0,
+        "Y": 120.0
+      },
+      {
+        "Id": "47c352fbf3a44677a3736dac727fa5ec",
+        "Name": "Report",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 800.0,
+        "Y": 120.0
+      }
+    ],
+    "Annotations": [],
+    "X": 100.0,
+    "Y": 100.0,
+    "Zoom": 0.9
+  }
+}
