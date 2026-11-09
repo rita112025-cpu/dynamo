@@ -1,0 +1,10 @@
+﻿編號,項次,安裝位置,機櫃類型,機櫃規格,配置數量,台序,寬mm,深mm,高mm,尺寸,BIM設計與應用說明,來源文件,來源工作表,來源列
+XLSX-001-01,1,Depot Administration Building - Telecom SCADA Equipment Room,Server and Network Rack,19吋標準機櫃 (42U) / 800W x 1000D x 2000H mm,1,1,800,1000,2000,800W×1000D×2000H,行政大樓SCADA/電信共用機房，容納主伺服器與核心交換機，與通訊系統併置,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,2
+XLSX-002-01,2,Depot - Administration Building - Computer Room (汐東雲平台),Server and Network Rack,19吋標準機櫃 (42U) / 800W x 1000D x 2000H mm,1,1,800,1000,2000,800W×1000D×2000H,行政大樓資訊電腦房，置放汐東雲平台專屬伺服器、防火牆與外部對接交換機,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,3
+XLSX-003-01,3,Depot - TSS (機廠牽引變電站),COMS/SCADA Equipment Room RTU and Network Rack,標準工業機櫃 / 600W x 800D x 2100H mm,1,1,600,800,2100,600W×800D×2100H,機廠牽引變電站，置放Hitachi RTU-554 / MOXA採集單元與雙冗餘交換機,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,4
+XLSX-004-01,4,Phase 1 SB10 Station,COMS/SCADA Equipment Room RTU and Network Rack,標準工業機櫃 / 600W x 800D x 2100H mm,1,1,600,800,2100,600W×800D×2100H,SB10 車站弱電通訊房，置放RTU-554現場採集機櫃、UPS PDU及光纖配線盤,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,5
+XLSX-005-01,5,Phase 1 SB11 Station,COMS/SCADA Equipment Room RTU and Network Rack,標準工業機櫃 / 600W x 800D x 2100H mm,1,1,600,800,2100,600W×800D×2100H,SB11 車站弱電通訊房，置放RTU-554現場採集機櫃、UPS PDU及光纖配線盤,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,6
+XLSX-006-01,6,Phase 1 SB12 Station,COMS/SCADA Equipment Room RTU and Network Rack,標準工業機櫃 / 600W x 800D x 2100H mm,1,1,600,800,2100,600W×800D×2100H,SB12車站弱電通訊房，置放RTU-554現場採集機櫃、UPS PDU及光纖配線盤,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,7
+XLSX-007-01,7,Phase 1 SB13 Station,COMS/SCADA Equipment Room RTU and Network Rack,標準工業機櫃 / 600W x 800D x 2100H mm,1,1,600,800,2100,600W×800D×2100H,SB13 車站弱電通訊房，置放RTU-554現場採集機櫃、UPS PDU及光纖配線盤,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,8
+XLSX-008-01,8,Phase 1 SB14 Station,COMS/SCADA Equipment Room RTU and Network Rack,標準工業機櫃 / 600W x 800D x 2100H mm,1,1,600,800,2100,600W×800D×2100H,SB14 車站弱電通訊房，置放RTU-554現場採集機櫃、UPS PDU及光纖配線盤,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,9
+XLSX-009-01,9,Phase 1 SB15 Station,COMS/SCADA Equipment Room RTU and Network Rack,標準工業機櫃 / 600W x 800D x 2100H mm,1,1,600,800,2100,600W×800D×2100H,SB15 車站弱電通訊房，置放RTU-554現場採集機櫃、UPS PDU及光纖配線盤,機櫃規格與位置配置表.xlsx,機櫃規格與位置配置表,10
