@@ -220,7 +220,7 @@ CSV 的 `model_file` 仍只寫檔名（既有行為）。
 11. **新建一支 `.dyn`**（建議）。
 12. **Add-in（形態 C）**：是否排入後續規劃？
 
-13. **兩套機櫃族群與 GUID 衝突（必決）**：專案同時有 SoW V6 與 Excel 版機櫃族群；Excel 版共用參數檔中，與字典同名的 8 個參數 GUID 全部不同（[實測]，見探針報告 9.1）。字典目前只涵蓋 SoW V6。
+13. **兩套機櫃族群與 GUID 衝突（已決定：兩套都納入，見第 11 節）**：專案同時有 SoW V6 與 Excel 版機櫃族群；Excel 版共用參數檔中，與字典同名的 8 個參數 GUID 全部不同（[實測]，見探針報告 9.1）。字典目前只涵蓋 SoW V6。
     在決定前，兩種查找方式都會出錯：GUID 優先會漏掉 Excel 版（本次 0/32 找到）；名稱優先會讀到另一套 GUID 的同名參數（本次讀到 `XLSX-003-01` 等值）。
     選項：(a) 只支援 SoW V6，Excel 版判為「不支援族群」並 read_error；(b) 兩套都納入（字典需第二組 GUID 與 Excel 族群判定，另案設計與契約確認）；(c) 以族群名稱區分套件版本（例如 `SCADA_機櫃_XLSX-` 前綴）。建議：先 (a) 明確標示，再視需要 (b)。
 14. **內建參數的名稱備援**：中文介面下，服務類型的名稱查找無效（[實測]）。建議：內建參數以 BuiltInParameter 為唯一來源；名稱備援刪除，或只作為「找不到時的提示」。
@@ -254,3 +254,146 @@ CSV 的 `model_file` 仍只寫檔名（既有行為）。
 - 連結模型的座標與重複元件處理。
 - 2500 mm 條款、50 mm、1 mm 的判定（M4）。
 - 推送與既有工具的修改。
+
+## 11. 兩套機櫃族群都納入（使用者決定）：待核准的修改設計
+
+**狀態：文件設計，尚未實作，未獲核准任何程式、字典、核心或契約修改。**
+**M3 驗收基準（commit 與狀態）維持不變**：M3 純 Python 核心的驗收基準仍是既有的 M3 推定版驗收（見 `docs/M3_acceptance.md`）。
+本節的任何設計若被核准實作，**需另案重新驗收**，本節本身不構成 M3 重新驗收，也不得被視為 M3 重新驗收。
+
+### 11.1 決定
+
+使用者於 2026-11-09 決定：**SoW V6 與 Excel 版兩套機櫃族群都納入**。以下為該決定的影響設計（第 11.2–11.8 節）。第 8.2 節第 13 項因此標為「已決定」。
+
+### 11.2 字典結構（待核准）
+
+現有 `rack` 區塊只有一套共用參數（SoW V6，群組 `SCADA_SoW_V6`）。擬改為兩套**參數組**，每組各自有來源檔與 SHA-256：
+
+| 參數組 | 來源檔 | SHA-256 | 群組 | 參數數 | 與另一組的關係 |
+|---|---|---|---|---|---|
+| `SoW_V6` | `NWC\SCADA_SoW_V6_SharedParameters.txt`（`D:\SCADA_主題導覽\01_BIM model\SCADA_機櫃_Dynamo\NWC\`） | `5d8ced89fe445bf10b5e4e17bb47acca81bc0ff13544954328e57ecb58bc9711` | `SCADA_SoW_V6` | 16 | 同名 8 個（編號、機櫃類型、寬、深、高、尺寸、來源文件、定位來源）GUID 與 Excel 版**全不同** |
+| `Excel` | `Excel_機櫃族群\族群\SCADA_Excel_SharedParameters.txt`（同上資料夾下） | `e9830267101a6612a0433966a584ac3565c11461c24973d823c48a39ce7ed9db` | `SCADA_Excel_Racks` | 16 | 同名 8 個（同上）；另 8 個僅 Excel 有（項次、安裝位置、機櫃規格、配置數量、台序、BIM設計與應用說明、來源工作表、來源列） |
+
+**名稱、GUID、型別一律由程式從來源檔讀出，不得手填。** 讀取與雙向比對沿用 `verify_against_shared_file` 的做法（名稱↔GUID↔型別、群組、來源 sha256），**每一組各自比對**。
+測試以假資料的 UTF-16 檔驗證（沿用 `tests/test_shared_consistency.py`），不讀 D: 真實路徑；真實檔案的核對由手動執行 `verify_against_shared_file` 完成。
+
+**「值不可為空」清單與出處（每組各自列出，不得沿用另一組）：**
+
+| 參數組 | 值不可為空（推定） | 出處（既有程式） | 狀態 |
+|---|---|---|---|
+| `SoW_V6` | 編號、站點、房間、機櫃類型、寬mm、深mm、高mm（7 個） | `validate_racks.py` 的 `REQUIRED_COLUMNS`，以及 `scada_racks.py` 的欄位定義 | 依既有程式推定，非業主確認（與現行一致） |
+| `Excel` | 編號、機櫃類型、寬mm、深mm、高mm（5 個） | `excel_rack_runtime.py`：`family_name()` 拒絕空編號（第 100 行）；`main()` 拒絕空機櫃類型，且寬／深／高須為有限正數（第 233–241 行） | **依既有程式推定，非業主確認**；Excel 版無對應的 `validate_racks.py`，清單出處僅為產生程式，**待確認**是否有其他驗證 |
+
+「只要求存在」的參數：SoW 組為其餘 9 個（期別、建物、尺寸、附錄D項次、UPS電源110V、附錄F項次、來源文件、備註、定位來源）；Excel 組為其 16 個中除上列 5 個以外的 11 個。**出處不明者列待確認**：Excel 版「尺寸」等欄位是否必填，以及 Excel 版是否還有其他驗證。
+
+淨距參數（`SCADA_前方淨距mm`、`SCADA_後方淨距mm`、`SCADA_淨距依據`）維持**待確認、不檢查、不補造 GUID**，不因兩組而改變。
+
+### 11.3 判定機櫃屬於哪一組
+
+| 方案 | 做法 | 優點 | 缺點 |
+|---|---|---|---|
+| (A) 族群名稱前綴 | `SCADA_機櫃_XLSX-` 前綴歸 Excel，其餘歸 SoW | 簡單、可讀 | 前綴是 Excel CSV 的編號慣例，**不是保證**；不同編號格式會誤判；與實際參數不一致時無法發現 |
+| (B) 依實際找到的 GUID 集合 | 用各組 GUID 在該元件查找，哪一組的參數**全部**找到就歸該組 | 以參數本身為證據；不依賴名稱 | 需要兩組 GUID 查找都成功；若兩組都部分找到，無法判定 |
+| (C) 兩者都要成立（**建議**） | (A) 與 (B) 同時判定；兩者一致才歸組；不一致或皆不明，標 UNVERIFIED | 衝突可見；不猜 | 規則較複雜；需實機資料驗證 |
+
+**衝突處理（建議）：** 名稱像 Excel、GUID 像 SoW（或反之）→ 該機櫃的共用參數相關檢查標 **UNVERIFIED**，reason 註明「族群名稱指向 X 組，參數 GUID 指向 Y 組，無法判定」，**不猜**。
+皆不明（例如 GUID 全部找不到）→ UNVERIFIED，reason 註明「兩組 GUID 皆查無完整參數組」。（注意：若已判定為某組但該組 GUID 找不到，屬 MISSING_PARAMETER，FAIL，而不是 UNVERIFIED。）
+
+**實測依據：** 第一次探針兩個機櫃樣本名稱含 `SCADA_機櫃_XLSX-003-01_機廠TSS`，SoW GUID 查找 0/32；Excel 組的 GUID 查找**尚未實測**（須第二次探針確認 16/16）。
+
+### 11.4 查找規則（待核准）
+
+1. 共用參數**一律依該機櫃所屬參數組的 GUID 查找**。
+2. **不得以名稱查找共用參數**（同名不同 GUID 會讀到錯的參數）。
+3. 名稱只用於報告顯示（例如 reason 中的參數名）。
+4. 機櫃未能判定參數組時，共用參數相關檢查 UNVERIFIED，不查找、不猜。
+
+### 11.5 契約影響：Snapshot v2 與未來 v3
+
+| 項目 | v2（現行） | v3（擬，需核准契約修改） |
+|---|---|---|
+| 機櫃的參數組識別 | 無；`parameters` 以參數名稱為鍵，無法記錄值來自哪一組 GUID | 新增機櫃元件欄位 `shared_parameter_group`（值為 `SoW_V6`、`Excel`，或 `null` 表示無法判定） |
+| 追溯 | 只能由族群名稱推得參數組 | 快照本身記錄判定的參數組，以及 `shared_group_found` 計數（找到幾個參數） |
+| 舊快照 | 目前只有 v1 被明確拒絕 | 建議：**明確拒絕 v2**（訊息指出需要 version 3 以記錄參數組）；理由：v2 無法判定機櫃參數組，接受會產生不可追溯的結果 |
+
+**兩個選項的比較：**
+
+- **(a) 維持 v2**：Reader 與核心各自以族群名稱推得參數組。缺點：追溯性不足；Reader 與核心的判定可能不一致；快照無法證明判定依據。
+- **(b) 契約升版為 v3（建議）**：機櫃元件加上參數組識別。缺點：需核准契約修改；舊快照須明確拒絕；核心與 Reader 須同步。
+
+**影響範圍（若選 b）：**
+
+| 對象 | 影響 |
+|---|---|
+| Reader（設計，未實作） | 必須判定參數組並輸出 `shared_parameter_group`；必須依組 GUID 查找 |
+| 核心 `mep_toolkit`（`snapshot.py`、`completeness.py`） | 讀取 v3；依參數組選擇 GUID 組與值不可為空清單；v2 拒絕 |
+| `.dyn` | 完整度檢查 `.dyn` 與探針 `.dyn` 需重建（程式內嵌核心與字典）；既有產物 SHA-256 會改變 |
+| GUI（設計，未實作） | 只顯示 `shared_parameter_group` 與判定結果，不自行判定 |
+
+### 11.6 族群名稱規則（待確認）
+
+- **SoW 組**：族群名稱為 `SCADA_機櫃_<編號>`（`scada_racks.py` 的 `family_name`，已有出處）。規則「名稱編號 = SCADA_編號」僅適用此組。
+- **Excel 組**：族群名稱為 `SCADA_機櫃_<編號>_<安裝位置標籤>`（`excel_rack_runtime.py` 的 `family_name()`，已有出處）。標籤由「安裝位置」對應：`Phase 1 SBxx Station` → `SBxx`；另有三個固定名稱；其他位置直接拋出例外。
+- **第一次探針的樣本**：名稱 `SCADA_機櫃_XLSX-003-01_機廠TSS`，`SCADA_編號` 值 `XLSX-003-01`，與上述結構一致。
+- **待確認**：Excel 組的「名稱中的編號部分」與 `SCADA_編號` 是否必須相等（樣本一致，但規則未經多個樣本驗證）。**不得把 SoW 的「名稱編號 = SCADA_編號」規則直接套用到 Excel 組，除非有出處。**
+
+### 11.7 影響範圍清單（若核准）
+
+| 檔案／對象 | 需要改 | 說明 |
+|---|---|---|
+| `config/parameter_dictionary.json` | **是** | `shared_parameters` 與 `rack` 區塊改為兩組參數組；各組有來源檔、sha256、群組、參數、值不可為空清單與出處 |
+| `mep_toolkit/dictionary.py` | **是** | 驗證器支援兩組；雙向比對對每組執行；拒絕未知組 |
+| `mep_toolkit/completeness.py` | **是** | 依參數組選擇 GUID 組；判定參數組（方案 C）；衝突標 UNVERIFIED |
+| `mep_toolkit/snapshot.py` | **是（若選 b）** | v3 欄位；拒絕 v2 |
+| `mep_toolkit/csv_report.py` | 否 | 輸出器不變，仍遵守「每元件每檢查恰好一筆」 |
+| `tests/test_dictionary.py`、`tests/test_shared_consistency.py`、`tests/test_completeness.py`、`tests/test_snapshot.py` | **是** | 新增兩組與判定測試；16 組 GUID 固定常數增為兩組 |
+| `tests/test_dyn_build.py` | **是** | `REFERENCE_PYTHON_NODE_KEYS` 不變；嵌入字典的測試隨之更新 |
+| `tests/test_reader_probe.py` | **是** | `SHARED_PARAMETERS` 常數與字典比對隨之更新（探針原始碼需同步修改，需核准） |
+| `tools/probe/reader_api_probe.py`、探針 `.dyn` | **是（若要第二次探針查兩組 GUID）** | 探針的共用參數常數須加入 Excel 組 |
+| `tools/make_dyn.py`、`tools/dyn_checks.py` | 否 | 建置機制不變；只重建產物 |
+| `tools/reader_rules.py` | 否 | Reader 護欄不變 |
+| `docs/parameter_dictionary.md`、`docs/snapshot_format.md`、`docs/M3_acceptance.md`、`docs/M2_spec.md`、`docs/dyn_build.md` | **是** | 文件更新；`M3_acceptance.md` 須註明基準變更與重新驗收 |
+| `docs/reader_design.md`、`docs/gui_design.md`、`docs/reader_probe.md` | 本次僅設計，已記錄 | 實作核准後再更新 |
+| 既有五組 Dynamo 工具（`G:\Dynamo\批次*`、`Excel參數同步`）與 `dwg_batch_tool` | **否** | 本設計不涉及 |
+| `examples/sample_snapshot.json` | **是（若選 b）** | 升為 v3 樣本；v2 樣本保留於 `examples/legacy/` 作拒絕測試 |
+
+**重新驗收：** 若核准實作，字典與核心皆需變更，**M3 須重新驗收**（雙環境測試、10 檔雜湊、新產物雜湊、第二次探針）。在核准前，本設計不改變 M3 的驗收基準。
+
+### 11.8 第二次探針的新增需求
+
+測試模型須同時放入：SoW V6 版機櫃族群 RFA（`SCADA_機櫃_Dynamo\族群\`）與 Excel 版機櫃族群 RFA（`SCADA_機櫃_Dynamo\Excel_機櫃族群\`）各一。
+探針需回答：(1) 兩套 GUID 在各自族群上的查找結果（SoW 組對 SoW 族群、Excel 組對 Excel 族群，應各為 16/16）；(2) 跨組查找（SoW GUID 對 Excel 族群、反之）的結果；(3) 非空值讀取；(4) 唯讀共用參數；(5) IsModified 前後（須先存檔）。
+
+---
+
+## 12. 規則證據表（第一次探針與本次文件）
+
+標示：**[實測]** 已由探針報告證實（報告 `reader_probe_20261109-141531.json`，SHA-256 `50d46ac22f56b13bd8e19b68306dae519e5c3be1c11c6d98f33b33a6856fa0db`）；**[檔案比對]** 唯讀比對來源檔，非 Revit 實測；**[自動測試]** 假模組或純 Python 測試；**[待第二次探針]** 尚無實機證據。
+
+| 規則 | 證據類型 | 證據（報告中的項目） | 狀態 |
+|---|---|---|---|
+| `Id.Value` 與 `Id.IntegerValue` 可用且相同 | [實測] | E3a：9/9 相同 | 已證實 |
+| 系統族群的 `FamilyName` 有值，不為 null | [實測] | E3b：導管、電纜架 | 已證實 |
+| `Symbol` 僅存在於 FamilyInstance | [實測] | E3d：hasattr 結果 | 已證實 |
+| 不可讀 `ElementType.Name` | [實測] | E3e：28 次 TypeError | 已證實 |
+| 服務類型 BuiltInParameter 可找到；Definition.Name 含冒號；名稱備援無效 | [實測] | E4a | 已證實 |
+| 「Comments」名稱查找無效（中文介面） | [實測] | E4a | 已證實 |
+| `IsReadOnly` 可判定唯讀 | [實測] | E4c：CURVE_ELEM_LENGTH True（僅此參數） | 部分證實（共用參數唯讀未測） |
+| `StorageType` 字串化為數值，應與列舉比較 | [實測] | E4d | 已證實 |
+| 服務類型與備註樣本為空（HasValue False） | [實測] | E4e | 已證實（僅空值） |
+| 機櫃共用參數可讀非空字串 | [實測] | E5：編號、寬、深、高等 | 已證實 |
+| SoW GUID 對 Excel 機櫃查找 0/32 | [實測] | E5 | 已證實（跨組反向） |
+| 名稱查找對 Excel 機櫃每台找到 8 個 | [實測] | E5 | 已證實 |
+| Excel 組與字典同名 8 個 GUID 全部不同 | [檔案比對] | 第 11.2 節（唯讀比對） | 已證實（檔案層級） |
+| Excel 組 GUID 查找 16/16 | [待第二次探針] | — | 待確認 |
+| SoW 組 GUID 查找對 SoW 機櫃 16/16 | [待第二次探針] | — | 待確認 |
+| 非協作模型的工作集為 N/A | [實測] | E6 | 已證實（僅非協作） |
+| 連結模型數量可取得（1 個） | [實測] | E7 | 已證實（數量） |
+| 連結內元件可讀取 | [待第二次探針] | — | 未測 |
+| IsModified 可讀 | [實測] | E8：True、True | 已證實（可讀） |
+| 執行前後文件未修改 | [待第二次探針] | 第一次因文件已修改而無法判定 | 未證實（需先存檔） |
+| 探針原始碼未含寫入類呼叫（靜態） | [自動測試] | `tools/reader_rules.py` 與測試 | 靜態證據（非實機執行證據） |
+| 單一 API 失敗不中止 | [自動測試] + [實測] | 28 次 TypeError 後仍完成 731 步 | 已證實 |
+| 類型參數 LookupParameter | [待第二次探針] | 樣本類型上皆找不到 | 樣本不足 |
+| 非空值的 BuiltInParameter（服務類型、備註） | [待第二次探針] | 樣本為空 | 未測 |
+| 唯讀共用參數 | [待第二次探針] | — | 未測 |
