@@ -13,17 +13,27 @@
 **結果檔**（`write_findings_csv`）：`tool_version, run_time, model_file, element_id, check, result, reason`
 
 - `element_id` 空白表示針對整個模型的結果。
-- `model_file` 只寫檔名，**必須由呼叫端傳入來源路徑**（使用者要求開啟的那個路徑）。不可從開啟後的文件讀取：用 `DetachAndPreserveWorksets` 分離開啟的文件，`doc.PathName` 是空字串；空路徑會被拒絕。
+- `model_file` 只寫檔名（**同名但不同資料夾的檔案無法區分**），**必須由呼叫端傳入來源路徑**（使用者要求開啟的那個路徑）。不可從開啟後的文件讀取：用 `DetachAndPreserveWorksets` 分離開啟的文件，`doc.PathName` 是空字串；空路徑會被拒絕。
 
 **範圍檔**（`write_scope_csv`，每個模型一份）：`tool_version, run_time, model_file, check, examined, pass, fail, unverified, note`
 
-- 每個檢查項目一列，`examined` 是實際檢查的元件數。「沒有問題」（examined > 0，fail = 0）和「沒有檢查」（examined = 0，且必須有 `note` 說明原因）因此可以區分。
-- 輸出器在以下情況拒絕寫入：結果的檢查項目沒有對應範圍、同一檢查項目有兩筆範圍、某檢查回報的不同元件數超過它宣稱檢查的數量。
+- 每個檢查項目一列，`examined` 是實際檢查的元件數。**每個被檢查的元件，對該檢查恰好一筆結果**，所以 `pass + fail + unverified = examined`；「沒有結果」不會被當成通過。
+- 「沒有問題」（examined > 0，fail = 0）和「沒有檢查」（examined = 0，且必須有 `note` 說明原因）因此可以區分。
+- 模型層級的檢查（`element_id` 空白）：`examined = 1`，恰好一筆結果。
+- 輸出器在以下情況拒絕寫入、不留檔：結果的檢查項目沒有對應範圍；同一檢查項目有兩筆範圍；元件層級檢查的結果筆數不等於 `examined`（漏送或同一元件送兩筆）；模型層級與元件層級混在同一檢查；`examined > 0` 卻沒有任何結果。
+- 計數口徑（例如「設備編號重複」：每個涉及的元件各一筆 FAIL）見 [docs/unverified_policy.md](docs/unverified_policy.md)。
 
 ## 讀回 CSV 的注意事項
 
 - 以 `= + - @` 開頭的文字會被加上 `'`，避免 Excel 當成公式執行。Excel 會把這個撇號顯示出來；用程式讀回時，請去掉文字欄位開頭的 `'`。
-- 目標 CSV 正被 Excel 開著時，寫入會失敗，並顯示明確錯誤；舊報告維持不變，不會留下暫存檔。
+- 目標 CSV 正被 Excel 開著時，寫入會失敗並拋出 `PermissionError`（`filename` 屬性為目標路徑，訊息說明請關閉 Excel）；舊報告維持不變，不會留下暫存檔。
+
+## 尚未驗證
+
+- 套件能否在 Dynamo 的 Python 節點中 import。
+- `ElementId.Value` / `IntegerValue` 的版本說明憑記憶寫成，未查 Autodesk 文件。
+- 未用 Excel 實際開啟過這些 CSV。
+- 多模型彙總報告尚未設計（範圍檔目前每個模型一份）。
 
 ## 相容性
 

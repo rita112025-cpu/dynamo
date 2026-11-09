@@ -1,7 +1,7 @@
 ﻿tool_version,run_time,model_file,check,examined,pass,fail,unverified,note
 0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,SCADA_服務類型必填,3,1,2,0,
-0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,CableTray_Connector連接,14,0,1,0,
-0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,CableTray_高程範圍,14,0,0,1,
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,CableTray_Connector連接,14,13,1,0,
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,CableTray_高程範圍,14,0,0,14,
 0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,工作集載入,1,0,0,1,以整個模型為單位
-0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,設備編號重複,20,0,1,0,
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,設備編號重複,20,18,2,0,
 0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,Conduit_Connector連接,0,0,0,0,模型沒有電管，未檢查

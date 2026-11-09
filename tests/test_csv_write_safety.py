@@ -35,14 +35,17 @@ class ReplaceFailureTest(unittest.TestCase):
             with self.assertRaises(PermissionError) as cm:
                 write_findings_csv(self.path, [Finding("new", Status.PASS, 2)], "m.rvt", RUN_TIME)
         self.assertIn("Excel", str(cm.exception))
-        self.assertIn(self.path, str(cm.exception))
+        self.assertEqual(cm.exception.filename, self.path)
+        self.assertEqual(cm.exception.errno, 13)
         self.assert_untouched()
 
     def test_scope_csv_gives_clear_message_and_keeps_old_report(self):
         with mock.patch("os.replace", side_effect=PermissionError(13, "denied")):
             with self.assertRaises(PermissionError) as cm:
-                write_scope_csv(self.path, [CheckScope("new", 1)], [], "m.rvt", RUN_TIME)
+                write_scope_csv(self.path, [CheckScope("new", 1)],
+                                [Finding("new", Status.PASS, 1)], "m.rvt", RUN_TIME)
         self.assertIn("Excel", str(cm.exception))
+        self.assertEqual(cm.exception.filename, self.path)
         self.assert_untouched()
 
     @unittest.skipUnless(os.name == "nt", "Windows locks open files; other systems do not")
@@ -52,6 +55,7 @@ class ReplaceFailureTest(unittest.TestCase):
                 write_findings_csv(self.path, [Finding("new", Status.PASS, 2)], "m.rvt", RUN_TIME)
             except PermissionError as ex:
                 self.assertIn("Excel", str(ex))
+                self.assertEqual(ex.filename, self.path)
             else:
                 self.skipTest("this Windows build allowed replacing an open file")
         self.assert_untouched()

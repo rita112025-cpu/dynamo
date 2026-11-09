@@ -36,6 +36,10 @@ class CheckScopeTest(unittest.TestCase):
             CheckScope("c", 1, None)
 
 
+def element_results(check, ids, status=Status.PASS, reason=""):
+    return [Finding(check, status, i, reason) for i in ids]
+
+
 class ScopeCsvTest(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -51,9 +55,14 @@ class ScopeCsvTest(unittest.TestCase):
         with open(self.path, encoding="utf-8-sig", newline="") as fh:
             return list(csv.reader(fh))
 
-    def test_counts_per_check(self):
+    def assert_rejected(self, scopes, findings, pattern):
+        with self.assertRaisesRegex(ValueError, pattern):
+            self.write(scopes, findings)
+        self.assertEqual(os.listdir(self.dir), [])
+
+    def test_counts_per_check_sum_to_examined(self):
         n = self.write(
-            [CheckScope("a", 4), CheckScope("b", 2)],
+            [CheckScope("a", 4), CheckScope("b", 1)],
             [
                 Finding("a", Status.PASS, 1),
                 Finding("a", Status.PASS, 2),
@@ -67,45 +76,81 @@ class ScopeCsvTest(unittest.TestCase):
         self.assertEqual(tuple(rows[0]), SCOPE_COLUMNS)
         base = [TOOL_VERSION, "2026-11-09T10:30:00+08:00", "FAKE-ESC-A.rvt"]
         self.assertEqual(rows[1], base + ["a", "4", "2", "1", "1", ""])
-        self.assertEqual(rows[2], base + ["b", "2", "1", "0", "0", ""])
+        self.assertEqual(rows[2], base + ["b", "1", "1", "0", "0", ""])
+        for row in rows[1:]:
+            self.assertEqual(int(row[5]) + int(row[6]) + int(row[7]), int(row[4]))
 
-    def test_nothing_wrong_and_nothing_checked_are_distinguishable(self):
+    def test_all_examined_elements_have_a_result_passes(self):
+        ids = range(2000, 2014)
+        findings = (element_results("c", [2000], Status.FAIL, "x")
+                    + element_results("c", list(ids)[1:]))
+        self.write([CheckScope("c", 14)], findings)
+        self.assertEqual(self.rows()[1][3:8], ["c", "14", "13", "1", "0"])
+
+    def test_examined_14_but_only_1_result_rejected_and_no_file(self):
+        self.assert_rejected(
+            [CheckScope("c", 14)],
+            [Finding("c", Status.FAIL, 1, "x")],
+            "examined 14 elements but has 1 results",
+        )
+
+    def test_more_results_than_examined_rejected(self):
+        self.assert_rejected(
+            [CheckScope("a", 1)], element_results("a", [1, 2]),
+            "examined 1 elements but has 2 results",
+        )
+
+    def test_same_element_twice_rejected(self):
+        self.assert_rejected(
+            [CheckScope("a", 2)],
+            [Finding("a", Status.FAIL, 7, "x"), Finding("a", Status.FAIL, 7, "y")],
+            "more than one result for element",
+        )
+
+    def test_examined_without_any_result_rejected(self):
+        self.assert_rejected([CheckScope("a", 12)], [], "sent no results")
+
+    def test_nothing_checked_is_distinguishable_from_all_passed(self):
         self.write(
             [CheckScope("clean", 12), CheckScope("empty", 0, "模型沒有電纜架")],
-            [],
+            element_results("clean", range(12)),
         )
         rows = self.rows()
-        self.assertEqual(rows[1][3:], ["clean", "12", "0", "0", "0", ""])
+        self.assertEqual(rows[1][3:], ["clean", "12", "12", "0", "0", ""])
         self.assertEqual(rows[2][3:], ["empty", "0", "0", "0", "0", "模型沒有電纜架"])
 
-    def test_finding_without_scope_rejected_and_no_file(self):
-        with self.assertRaisesRegex(ValueError, "no scope"):
-            self.write([CheckScope("a", 1)], [Finding("other", Status.PASS, 1)])
-        self.assertEqual(os.listdir(self.dir), [])
-
-    def test_duplicate_scope_rejected(self):
-        with self.assertRaisesRegex(ValueError, "duplicate"):
-            self.write([CheckScope("a", 1), CheckScope("a", 2)], [])
-        self.assertEqual(os.listdir(self.dir), [])
-
-    def test_more_elements_than_examined_rejected(self):
-        with self.assertRaisesRegex(ValueError, "examined only 1"):
-            self.write(
-                [CheckScope("a", 1)],
-                [Finding("a", Status.PASS, 1), Finding("a", Status.PASS, 2)],
-            )
-        self.assertEqual(os.listdir(self.dir), [])
-
-    def test_several_findings_on_one_element_count_once_as_examined(self):
-        self.write(
-            [CheckScope("a", 1)],
-            [Finding("a", Status.FAIL, 7, "x"), Finding("a", Status.FAIL, 7, "y")],
+    def test_zero_examined_with_a_result_rejected(self):
+        self.assert_rejected(
+            [CheckScope("a", 0, "none")], [Finding("a", Status.PASS, 1)],
+            "examined 0 elements but has 1 results",
         )
-        self.assertEqual(self.rows()[1][3:8], ["a", "1", "0", "2", "0"])
 
-    def test_model_level_finding_does_not_need_an_element(self):
+    def test_model_level_check_one_result(self):
         self.write([CheckScope("a", 1)], [Finding("a", Status.UNVERIFIED, None, "z")])
         self.assertEqual(self.rows()[1][3:8], ["a", "1", "0", "0", "1"])
+
+    def test_model_level_check_needs_examined_one_and_one_result(self):
+        self.assert_rejected(
+            [CheckScope("a", 2)], [Finding("a", Status.FAIL, None, "z")], "model-level check"
+        )
+        self.assert_rejected(
+            [CheckScope("a", 1)],
+            [Finding("a", Status.FAIL, None, "z"), Finding("a", Status.FAIL, None, "w")],
+            "model-level check",
+        )
+
+    def test_mixed_levels_rejected(self):
+        self.assert_rejected(
+            [CheckScope("a", 2)],
+            [Finding("a", Status.PASS, 1), Finding("a", Status.FAIL, None, "z")],
+            "mixes element-level and model-level",
+        )
+
+    def test_finding_without_scope_rejected_and_no_file(self):
+        self.assert_rejected([CheckScope("a", 1)], [Finding("other", Status.PASS, 1)], "no scope")
+
+    def test_duplicate_scope_rejected(self):
+        self.assert_rejected([CheckScope("a", 1), CheckScope("a", 2)], [], "duplicate")
 
     def test_wrong_types_rejected(self):
         with self.assertRaises(TypeError):
@@ -114,7 +159,7 @@ class ScopeCsvTest(unittest.TestCase):
             self.write([CheckScope("a", 1)], ["x"])
 
     def test_note_formula_neutralised(self):
-        self.write([CheckScope("a", 1, "=1+1")], [])
+        self.write([CheckScope("a", 1, "=1+1")], [Finding("a", Status.PASS, 1)])
         self.assertEqual(self.rows()[1][8], "'=1+1")
 
 

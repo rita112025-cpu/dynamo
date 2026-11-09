@@ -61,13 +61,47 @@ def _write_rows(path: str, header: Sequence[str], rows: List[List[str]]) -> None
         except PermissionError as ex:
             raise PermissionError(
                 ex.errno,
-                "cannot replace report %s - is it open in Excel? Close it and run again. "
-                "The previous report is unchanged." % path,
+                "cannot replace the report - is it open in Excel? Close it and run again. "
+                "The previous report is unchanged",
+                path,
             ) from ex
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
+
+
+def _check_complete(check: str, examined: int, results: List[Finding]) -> None:
+    """Raise ValueError unless `results` cover exactly `examined` units, once each."""
+    if not results:
+        if examined != 0:
+            raise ValueError(
+                "check %r says it examined %d but sent no results; send one Finding per "
+                "examined element" % (check, examined)
+            )
+        return
+    model_level = [f for f in results if f.element_id is None]
+    if model_level and len(model_level) != len(results):
+        raise ValueError("check %r mixes element-level and model-level results" % check)
+    if model_level:
+        if len(results) != 1 or examined != 1:
+            raise ValueError(
+                "model-level check %r needs exactly 1 result and examined = 1 "
+                "(got %d results, examined %d)" % (check, len(results), examined)
+            )
+        return
+    ids = [f.element_id for f in results]
+    if len(set(ids)) != len(ids):
+        dup = sorted(i for i, n in Counter(ids).items() if n > 1)[:5]
+        raise ValueError(
+            "check %r has more than one result for element(s) %s; "
+            "use one Finding per element per check" % (check, dup)
+        )
+    if len(ids) != examined:
+        raise ValueError(
+            "check %r examined %d elements but has %d results; every examined element "
+            "needs exactly one Finding" % (check, examined, len(ids))
+        )
 
 
 def write_findings_csv(
@@ -109,10 +143,17 @@ def write_scope_csv(
 ) -> int:
     """Write one row per check for ONE model and return the row count.
 
+    Every examined element needs exactly one Finding, so pass + fail + unverified
+    always equals `examined`. "No result" is never counted as PASS.
+
     Refuses (nothing is written) when the scope and the findings disagree:
-    - a finding whose check has no scope,
-    - two scopes for the same check,
-    - a check that reports more distinct elements than it says it examined.
+    - a finding whose check has no scope, or two scopes for the same check,
+    - an element-level check whose number of results differs from `examined`
+      (missing results, or the same element twice),
+    - a model-level check (element_id None) that does not have exactly one
+      result and `examined == 1`,
+    - a check that mixes element-level and model-level results,
+    - `examined > 0` with no results at all.
     """
     scope_list = list(scopes)
     finding_list = list(findings)
@@ -129,20 +170,16 @@ def write_scope_csv(
             raise ValueError("duplicate scope for check %r" % s.check)
         by_check[s.check] = s
 
+    grouped = {c: [] for c in by_check}
     counts = {c: Counter() for c in by_check}
-    elements = {c: set() for c in by_check}
     for f in finding_list:
         if f.check not in by_check:
             raise ValueError("finding for check %r has no scope" % f.check)
+        grouped[f.check].append(f)
         counts[f.check][f.status] += 1
-        if f.element_id is not None:
-            elements[f.check].add(f.element_id)
+
     for c, s in by_check.items():
-        if len(elements[c]) > s.examined:
-            raise ValueError(
-                "check %r reports %d distinct elements but examined only %d"
-                % (c, len(elements[c]), s.examined)
-            )
+        _check_complete(c, s.examined, grouped[c])
 
     name, stamp = _prepare(model_file, run_time)
     rows = [

@@ -28,7 +28,22 @@ UNVERIFIED 的意思是「這個檢查對這個元件（或模型）無法下結
 與提案設計推得的結論，**尚未在 Revit 實機驗證**。`BatchCopyViewTemplates` 使用 CloseAllWorksets，
 若日後唯讀檢查沿用該設定，就會出現這種情況。
 
+## 每個元件一筆結果（計數口徑）
+
+- **元件層級的檢查**：每個被檢查的元件，對該檢查**恰好送出一筆** Finding（PASS、FAIL 或 UNVERIFIED）。
+  不可只送有問題的，也不可對同一元件、同一檢查送兩筆。若一個元件要判斷兩條規則，就是兩個檢查項目。
+- **模型層級的檢查**（`element_id` 空白，例如「工作集載入」）：`examined = 1`，恰好一筆 Finding。
+- **沒有可檢查的元件**：不送 Finding，`examined = 0`，並在 `note` 寫原因。
+- 「沒有結果」絕不等於通過。範圍檔輸出器會驗證 `pass + fail + unverified = examined`，
+  不符就拒絕寫入、不留檔。因此「規則未確認」時，所有受影響元件都要各自標 UNVERIFIED，
+  不能只標其中一筆。
+
+### 「設備編號重複」的口徑
+
+兩個元件共用同一編號時，**每個涉及的元件各一筆 FAIL**，`reason` 寫對方元件的 ElementId
+（三個以上時列出其餘全部）。沒有重複的元件各一筆 PASS。範例見 `examples/sample_findings.csv`。
+
 ## 與範圍檔的關係
 
-每個 UNVERIFIED 都會計入範圍檔的 `unverified` 欄。報告讀者應先看範圍檔：
+每個結果都計入範圍檔的 `pass`、`fail`、`unverified` 欄，三欄加總永遠等於 `examined`。報告讀者應先看範圍檔：
 `examined` 很大、`unverified` 也很大，代表規則尚未確認，不代表模型沒問題。

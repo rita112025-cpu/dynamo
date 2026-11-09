@@ -18,16 +18,38 @@ RUN_TIME = datetime(2026, 11, 9, 10, 30, 0, tzinfo=timezone(timedelta(hours=8)))
 # SOURCE path the caller asked to open (never read back from a detached document).
 MODEL_FILE = r"D:\fake\FAKE-ESC-TEST-STATION.rvt"  # test data, not a real model
 
-FINDINGS = [
+# Rule: every examined element gets exactly ONE Finding per check, so pass + fail +
+# unverified == examined in the scope file. "No result" is never read as PASS.
+FINDINGS = []
+
+# SCADA_服務類型必填: 3 elements
+FINDINGS += [
     Finding("SCADA_服務類型必填", Status.PASS, 1001001),
     Finding("SCADA_服務類型必填", Status.FAIL, 1001002, "服務類型為空"),
     Finding("SCADA_服務類型必填", Status.FAIL, 1001003, "服務類型為 'SCADA ' (含空格)"),
-    Finding("CableTray_Connector連接", Status.FAIL, 1002001, "2 個 connector 中 1 個未連接"),
-    Finding("CableTray_高程範圍", Status.UNVERIFIED, 1002002, "高程規則未經業主確認"),
-    # Only possible when checking an already open document (see docs/unverified_policy.md).
-    Finding("工作集載入", Status.UNVERIFIED, None, "有 1 個工作集未開啟，其元件未檢查"),
-    Finding("設備編號重複", Status.FAIL, 1003001, "編號 =A01 與元件 1003002 重複"),
 ]
+
+# CableTray_Connector連接: 14 elements, 13 connected, 1 not
+FINDINGS += [Finding("CableTray_Connector連接", Status.PASS, 1002001 + i) for i in range(1, 14)]
+FINDINGS.append(Finding("CableTray_Connector連接", Status.FAIL, 1002001, "2 個 connector 中 1 個未連接"))
+
+# CableTray_高程範圍: rule not confirmed -> every affected element is UNVERIFIED
+FINDINGS += [
+    Finding("CableTray_高程範圍", Status.UNVERIFIED, 1002001 + i, "高程規則未經業主確認")
+    for i in range(14)
+]
+
+# 工作集載入: model-level check, one result. Only possible when checking an already
+# open document (see docs/unverified_policy.md).
+FINDINGS.append(Finding("工作集載入", Status.UNVERIFIED, None, "有 1 個工作集未開啟，其元件未檢查"))
+
+# 設備編號重複: 20 elements; the two that share a number each get one FAIL
+# (reason names the other element).
+FINDINGS += [
+    Finding("設備編號重複", Status.FAIL, 1003001, "編號 =A01 與元件 1003002 重複"),
+    Finding("設備編號重複", Status.FAIL, 1003002, "編號 =A01 與元件 1003001 重複"),
+]
+FINDINGS += [Finding("設備編號重複", Status.PASS, 1003001 + i) for i in range(2, 20)]
 
 SCOPES = [
     CheckScope("SCADA_服務類型必填", 3),
