@@ -65,3 +65,57 @@
 - 不改既有 5 支 Dynamo 腳本與 `.dyn`。
 - 不實作 `revit_io`；M3 不連 Revit，不做 Revit 內實測。
 - 不推送。
+
+---
+
+## 7. 暫定值與依據（審閱意見，審核方認可）
+
+每個門檻在 `config/thresholds.json` 帶 `status`、`source`、`source_status` 欄位，並可由設定檔調整。
+門檻的讀取與驗證：`mep_toolkit/thresholds.py`。
+
+| 門檻 | 值 | `status` | `source_status` | 說明 |
+|---|---|---|---|---|
+| `cable_tray_gap_max` | 50 mm | provisional | 提案值，無原文依據 | 缺口 ≤ 50 mm 視為疑似斷開的判定距離 |
+| `cable_tray_endpoint_tolerance` | 1 mm | provisional | 提案值，無原文依據 | 已連接端點相距 ≤ 1 mm 才算通過 |
+| `cable_tray_floor_clearance` | 2500 mm | provisional | **待核對原文** | 見第 8 節 |
+
+**規則：** 所有門檻在報告與 `reason` 中一律標示「暫定判定值」（`Threshold.label`）。
+任何文件或報告**不得**把結果寫成「符合業主規範」。`status` 為 `confirmed` 時，`source_status` 必須是「已核對原文」（驗證器強制）。
+
+## 8. 離地高度 2500 mm 的記錄（M4 使用，本版只列為設定）
+
+| 項目 | 內容 |
+|---|---|
+| 原文條款 | 業主需求書(四) 附錄C 第三章（**條款編號與頁碼：待核對原文**） |
+| 原文措辭 | 審核方轉達為「宜高出地面 ≥ 2.5 m」；**措辭與強制程度：待核對原文**（「宜」不等於「應」） |
+| 適用對象 | 電纜架水平段。垂直與斜向本版**不判定**（UNVERIFIED，註明原因） |
+| 高度基準 | **橋架底面**（三擇一：底部／中心線／頂部，本版定為底部，不得混用；驗證器只接受 `bottom`） |
+| 單位 | mm |
+| 判定方式 | 底面距關聯樓層的高度 **≥ 2500 → PASS**；< 2500 → FAIL。等於 2500 為 PASS |
+| 標高說明 | 樓層標高不一定等於完成面；reason 須註明 |
+| 狀態 | `provisional`，`source_status` = 待核對原文 |
+
+## 9. SCADA 共用參數（已從來源檔核對）
+
+- 來源：`D:\SCADA_主題導覽\01_BIM model\SCADA_機櫃_Dynamo\NWC\SCADA_SoW_V6_SharedParameters.txt`（UTF-16），sha256 `5d8ced89fe445bf10b5e4e17bb47acca81bc0ff13544954328e57ecb58bc9711`。
+- 16 個參數的**名稱、GUID、資料型別**全部由檔案讀出，未自行命名或憑記憶填寫。型別皆為 `TEXT`。
+- 適用族群：`OST_ElectricalEquipment` 且族群名稱含 `SCADA_機櫃`（`scada_racks.py`）。
+- 字典載入時驗證：GUID 格式（8-4-4-4-12 十六進位）、GUID 不重複、型別只接受 `TEXT`、名稱不重複、
+  共用參數集合**必須等於**機櫃必填參數集合、來源 sha256 格式、適用族群與機櫃定義一致。
+- 讀不到或無法確定的名稱列入「待使用者確認」，**不得自創替代名稱**（目前清單見 `docs/parameter_dictionary.md`）。
+
+## 10. Snapshot 契約與三層分離
+
+- Revit API（日後 `revit_io`，只負責讀取並輸出快照）、業務規則（`completeness.py`、`thresholds.py`）、報告輸出（`csv_report.py`）三者分離。
+- 快照契約固定欄位、型別、缺值規則與版本號；載入時拒絕不符版本、缺欄位與未知欄位。文件見 `docs/snapshot_format.md`。
+- 業務規則只接受通過驗證的快照，因此 `revit_io` 只要輸出符合契約的資料，就能交給純 Python 核心。
+
+## 11. 後續順序（審核方確認）
+
+1. **M3 純 Python 核心 + Snapshot 契約**（本階段，已完成核心與驗證，見 `docs/M3_acceptance.md`）
+2. M3 後段：新 `.dyn` 建置腳本（獨立驗證，**不覆寫既有 `.dyn`**）
+3. M4：Cable Tray 檢查（連接、離地高度；門檻依第 7、8 節）
+4. M5：Revit 2025 實機驗收
+5. M6：測試複本批次執行與正式驗收
+
+M3 期間不新增其他 Dynamo 功能。
