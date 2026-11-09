@@ -10,6 +10,7 @@
 - **[repo]**：既有腳本已在實際使用，已在 `G:\Dynamo` 中以 grep 確認存在。
 - **[憑記憶]**：來自記憶，**未查證 Autodesk 文件，也未在 Revit 2025.5 實測**。
 - **[待確認]**：無法確定，需在 Revit 2025.5 中以唯讀探針確認（見 R1.5）。
+- **[實測]**：已由第一次探針（2026-11-09，Revit 2025，報告 `reader_probe_20261109-141531.json`）證實，詳見 `docs/reader_probe.md` 第 6 節。
 - **[參考]**：其他專案已在用（例如 mep_tray 的 `FittingProbeCommand`，唯讀探查的先例），僅作為做法參考。
 
 [repo] 項目（已確認）：`doc.PathName`、`GetWorksharingCentralModelPath`、`DetachFromCentralOption.DetachAndPreserveWorksets`、
@@ -51,11 +52,11 @@
 
 | 快照欄位 | 來源 | 做法 | 狀態 |
 |---|---|---|---|
-| `element_id` | `el.Id` | 先試 `Id.Value`，`AttributeError` 時退回 `Id.IntegerValue`（[repo] 寫法）。結果為 `int`。 | `Value`：[憑記憶] 2024 之後加入；`IntegerValue`：[憑記憶] 2024 起過時仍存在。**2025.5 的實際行為：[待確認]，由 R1.5 探針確認。** 內建元件的負值：[待確認]。 |
+| `element_id` | `el.Id` | 先試 `Id.Value`，`AttributeError` 時退回 `Id.IntegerValue`（[repo] 寫法）。結果為 `int`。 | `Value`：[憑記憶] 2024 之後加入；`IntegerValue`：[憑記憶] 2024 起過時仍存在。**2025 實測 [實測]：兩者皆可用且相同（9/9）。** 內建元件的負值：[待確認]。 |
 | `category` | 迴圈的字典鍵 | 不讀本地化的 `Category.Name` | 不需 API 斷言 |
-| `family_name` | 類型元素 | `doc.GetElement(el.GetTypeId())` 取類型，再 `t.FamilyName`（在 `try` 中，失敗為空字串）[repo]。無族群 → `null`。 | 系統族群的 `FamilyName` 傳回值：**[待確認]**。`FamilyInstance.Symbol.Family.Name`：[憑記憶]，未採用。 |
+| `family_name` | 類型元素 | `doc.GetElement(el.GetTypeId())` 取類型，再 `t.FamilyName`（在 `try` 中，失敗為空字串）[repo]。無族群 → `null`。 | 系統族群的 `FamilyName` 有值 [實測]；`Symbol` 僅 FamilyInstance 有 [實測]；**不得讀 `ElementType.Name`（[實測] TypeError）**。`FamilyInstance.Symbol.Family.Name`：[憑記憶]，未採用。 |
 | `parameters`（內建） | `get_Parameter(BuiltInParameter)`，失敗再以名稱 `LookupParameter` [repo：`BatchFillScadaParams.get_param`] | 服務類型：`RBS_CTC_SERVICE_TYPE`，備援 `服務類型`、`Service Type`；備註：`ALL_MODEL_INSTANCE_COMMENTS`，備援 `備註`、`Comments` [repo] | 語系備援名單需在目標語系下確認 [待確認] |
-| `parameters`（共用） | 16 個 `SCADA_*` | 以字典的 GUID 查找（`get_Parameter(Guid)`：[憑記憶]，**[待確認]**）；失敗才以名稱 `LookupParameter` [repo] | 名稱查找受改名與語系影響；GUID 較穩定。使用哪一種見第 8.2 節第 7 項。 |
+| `parameters`（共用） | 16 個 `SCADA_*` | 以字典的 GUID 查找（`get_Parameter(Guid)`：探針 [實測] 可呼叫不拋例外；對 Excel 版機櫃查找 0/32 找到）；失敗才以名稱 `LookupParameter` [repo] | 名稱查找受改名與語系影響；GUID 較穩定。使用哪一種見第 8.2 節第 7 項。 |
 | 參數「不存在」（MISSING） | 查找（實例）結果為 `null` | 該名稱**不放入** `parameters` | [repo] 以 `None` 判斷 |
 | 參數「存在但空白」 | 參數物件存在，值為空 | `""` | [repo] |
 | 值轉字串 — String | `AsString()` | `None` → `""` | [repo] |
@@ -87,7 +88,7 @@
 1. 不開啟任何 `Transaction`／`TransactionGroup`／`SubTransaction`，不使用 `TransactionManager`。
 2. 不呼叫 `Save`、`SaveAs`、`SaveAsLibrary`、`SynchronizeWithCentral`、`Delete`、`Create`、`Set`、`SetValueString`、`Commit`、`RollBack`、`Regenerate`、`Close`、`OpenDocumentFile`、`CreateNewLocal`、`ForceCloseTransaction`。
 3. 不修改任何元件、參數、工作集、視圖。
-4. 執行前後比較文件修改狀態與元件數（[待確認]：`doc.IsModified` 的可用性，由 R1.5 探針確認），不一致則報錯。
+4. 執行前後比較文件修改狀態與元件數（`doc.IsModified` 可讀 [實測]；第一次探針前後皆 True，無法作為未修改的證明），不一致則報錯。
 
 ### 4.2 Reader 專用 AST 規則（D5）
 
@@ -179,19 +180,30 @@ CSV 的 `model_file` 仍只寫檔名（既有行為）。
 
 ## 8. 風險、未知與需要使用者決定的事項
 
-### 8.1 風險與未知
+### 8.1 風險與未知（第一次探針後更新）
 
-- ElementId `Value`／`IntegerValue` 在 2025.5 的行為（[待確認]，R1.5）。
-- `FamilyName` 對系統族群的傳回值（[待確認]，R1.5）。
-- `IsReadOnly` 的判定是否正確（未實測，R1.5）。
-- `get_Parameter(Guid)` 的存在與用法（[憑記憶]，[待確認]，R1.5）。
-- `IsModified` 的可用性（[待確認]，R1.5）。
-- 未開啟工作集的收集行為（[待確認]，R1.5）。
-- 類型參數 `LookupParameter` 的行為（[憑記憶]，[待確認]）。
-- Double 單位換算 API（[憑記憶]，[待確認]）。
-- 連結模型與 `GetLinkedDocuments` 的行為（[待確認]）。
-- 大型模型效能（未測）。
-- AST 護欄是靜態規則，有意繞過仍可能成功（已註明）。
+**已由第一次探針實測（報告 `reader_probe_20261109-141531.json`，SHA-256 `50d46ac22f56b13bd8e19b68306dae519e5c3be1c11c6d98f33b33a6856fa0db`，見 `docs/reader_probe.md` 第 6 節）：**
+
+- `Id.Value` 與 `Id.IntegerValue` 皆可用且相同（[實測] 9/9）。
+- 系統族群的 `FamilyName` 有值，不為 null（[實測]）。
+- `Symbol` 只存在於 FamilyInstance（[實測]）。
+- `IsReadOnly` 可判定唯讀（[實測]：長度參數 True；服務類型與備註 False）。
+- `get_Parameter(Guid)` 可呼叫且不拋例外（[實測]）；對本模型的 Excel 版機櫃，查找結果 0/32 找到（見 9.1 的衝突）。
+- `StorageType` 字串化後為列舉數值（[實測]：`'3'`、`'2'`）；reader 應與列舉比較。
+- **不可讀 `ElementType.Name`**（[實測] `TypeError: property cannot be read`，28 次失敗皆為此）。
+- 內建參數名稱備援無效：服務類型的 Definition.Name 為「服務類型:」，名稱查找找不到；「Comments」找不到（中文介面）（[實測]）。
+- 連結模型數量可取得（[實測]：1 個）。
+
+**仍待確認（需第二次探針，見 `docs/reader_probe.md` 第 10 節）：**
+
+- 非空值讀取：機櫃共用參數已讀到非空字串（[實測]）；內建服務類型與備註的非空值尚未測（樣本皆空）。
+- 唯讀共用參數：只有長度參數測過唯讀；共用參數中的唯讀者未測。
+- `IsModified` 作為「未修改」證明：本次執行前即為 True，無法判定（[實測] 前 True、後 True）。第二次探針須先存檔。
+- 未開啟工作集的收集行為與工作集內容：本次為非協作模型，未測。
+- 連結模型內的元件：未測。
+- 類型參數的實際行為：本次樣本的類型上找不到同名參數，樣本不足。
+- Double 單位換算（`UnitUtils`）：未測（目前設計不支援 Double，不受影響）。
+- 大型模型效能：未測。
 
 ### 8.2 需要使用者決定
 
@@ -207,6 +219,19 @@ CSV 的 `model_file` 仍只寫檔名（既有行為）。
 10. **類型參數**：第一版只讀實例（D6 的 read_error 處理，建議）；是否改讀類型參數，另案。
 11. **新建一支 `.dyn`**（建議）。
 12. **Add-in（形態 C）**：是否排入後續規劃？
+
+13. **兩套機櫃族群與 GUID 衝突（必決）**：專案同時有 SoW V6 與 Excel 版機櫃族群；Excel 版共用參數檔中，與字典同名的 8 個參數 GUID 全部不同（[實測]，見探針報告 9.1）。字典目前只涵蓋 SoW V6。
+    在決定前，兩種查找方式都會出錯：GUID 優先會漏掉 Excel 版（本次 0/32 找到）；名稱優先會讀到另一套 GUID 的同名參數（本次讀到 `XLSX-003-01` 等值）。
+    選項：(a) 只支援 SoW V6，Excel 版判為「不支援族群」並 read_error；(b) 兩套都納入（字典需第二組 GUID 與 Excel 族群判定，另案設計與契約確認）；(c) 以族群名稱區分套件版本（例如 `SCADA_機櫃_XLSX-` 前綴）。建議：先 (a) 明確標示，再視需要 (b)。
+14. **內建參數的名稱備援**：中文介面下，服務類型的名稱查找無效（[實測]）。建議：內建參數以 BuiltInParameter 為唯一來源；名稱備援刪除，或只作為「找不到時的提示」。
+15. **類型名稱**：reader 不得讀 `ElementType.Name`（[實測] 不可讀）。類型名稱改用 `FamilyName`，或不納入快照。
+
+### 8.3 探針後新增的風險
+
+- **字典與模型不一致時的靜默錯誤**：本次 GUID 查找 0/32，若 reader 不區分「找不到」與「不符」，會產生誤導性的 MISSING_PARAMETER。設計要求：reader 測試必須包含「字典 GUID 全部找不到」的案例，並在報告中明確註記（不得只顯示為缺參數）。
+- **IsModified 基準**：驗收程序必須先存檔再執行，否則「未修改」無法證明（第 7.2 節清單第 5 項的前提）。
+- **文件安全護欄的證據**：探針原始碼通過 `reader_rules.py` 的白名單與黑名單（靜態證據）。實機報告只記錄 `IsModified` 前後值，並未記錄寫入類呼叫的執行證據；因 `IsModified` 前後皆 True，也無法由此證明未修改。這一點需要第二次探針補強（先存檔後比對）。
+
 
 ## 9. 實作分階段計畫
 

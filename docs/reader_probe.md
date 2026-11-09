@@ -22,7 +22,7 @@
 
 ## 2. 測試模型準備（手動，由使用者執行）
 
-**只能使用新建的測試模型。不得使用正式模型，也不得使用正式模型的複本以外的檔案。**
+**只能使用新建並另存的測試模型。不得使用正式模型或其複本。**
 
 1. Revit 2025 → 新建**空白專案**。
 2. 放置少量元件（尺寸與位置不重要）：
@@ -74,23 +74,52 @@
 
 每筆紀錄的格式：`{"section", "name", "ok", "value"}`；失敗的紀錄為 `{"section", "name", "ok": false, "exception": "型別名: 訊息"}`。
 
-## 6. 結果紀錄範本（審核方與使用者共同填寫；尚未填寫）
+## 6. 結果紀錄（第一次探針，2026-11-09，使用者實機執行）
 
-| 編號 | 問題（對應 `docs/reader_design.md` 的待確認） | 探針結果（填入報告的值與例外） | 結論 |
+報告：`C:\Users\user\Downloads\ProbeOut\reader_probe_20261109-141531.json`，SHA-256 `50d46ac22f56b13bd8e19b68306dae519e5c3be1c11c6d98f33b33a6856fa0db`。
+測試模型：`C:\Users\user\Downloads\ReaderProbe_Test.rvt`（Revit 2025，非協作，1 個連結 `建築結構_1.rvt`）。
+結果：731 步，703 成功，28 失敗（全部為 `ElementType.Name` 的 `TypeError: property cannot be read`，見 E3e）。
+
+| 編號 | 問題 | 探針結果（報告 records） | 結論 |
 |---|---|---|---|
-| E1 | Revit 版本號與組建；PathName；Title；IsWorkshared；IsModified 前後 | | 待填 |
-| E2 | 7 品類：含與不含 `WhereElementIsNotElementType` 的數量（驗證 D1） | | 待填 |
-| E3a | `Id.Value` 與 `Id.IntegerValue` 是否都可用，數值是否相同 | | 待填 |
-| E3b | 系統族群（導管、電纜架）的 `t.FamilyName` 值 | | 待填 |
-| E3c | 可載入族群（機櫃）的 `t.FamilyName` 值 | | 待填 |
-| E3d | `Symbol.Family.Name` 是否可用 | | 待填 |
-| E4a | 服務類型與備註：BuiltInParameter 與名稱備援各自是否找到；StorageType、HasValue、AsString | | 待填 |
-| E4b | 同名參數在類型上是否存在（D6） | | 待填 |
-| E4c | IsReadOnly 能否回 True（以 CURVE_ELEM_LENGTH 為候選；[憑記憶]） | | 待填 |
-| E5 | 16 個共用參數：GUID 查找與名稱查找是否一致；StorageType；IsReadOnly；值 | | 待填 |
-| E6 | 工作集清單與開啟狀態（協作模型）；非協作記 N/A | | 待填 |
-| E7 | 連結模型數量（取不到則記錄例外） | | 待填 |
-| E8 | 執行前後 IsModified 是否不變 | | 待填 |
+| E1 | 版本、PathName、Title、IsWorkshared、IsModified 前後 | Revit `2025`（VersionName `Autodesk Revit 2025`）；PathName 為 `ReaderProbe_Test.rvt` 的完整路徑；Title `ReaderProbe_Test`；IsWorkshared False；IsModified 前 True、後 True | 已答。文件在執行前已修改（存檔後又有未存的變更），無法用 IsModified 證明未修改（見 9.3） |
+| E2 | 7 品類含與不含 WhereElementIsNotElementType | Conduit 全部 9／實例 1／類型 8；ConduitFitting 15／0／15；CableTray 9／2／7；CableTrayFitting 25／1／24；ElectricalEquipment 26／6／20；ElectricalFixtures 2／0／2；Wire 2／0／2 | 已證實：不加過濾會混入大量類型元素（D1 必要） |
+| E3a | Id.Value 與 Id.IntegerValue | 9 個樣本全部可用且相同（9/9） | 已證實 |
+| E3b | 系統族群的 FamilyName | 導管「不含配件的電管」、電纜架「含配件的電纜架」，皆有值，不為 null | 已證實 |
+| E3c | 可載入族群的 FamilyName | 機櫃樣本的類型為 `SCADA_機櫃_XLSX-003-01_機廠TSS` | 已證實 |
+| E3d | Symbol.Family.Name | `Symbol` 只存在於 FamilyInstance（配件、設備 hasattr True；導管、電纜架 False） | 已證實 |
+| E3e | ElementType.Name | 28 個失敗全部為 `TypeError: property cannot be read` | 已證實：不可讀，reader 不得依賴 `.Name` |
+| E4a | 服務類型與備註：BuiltInParameter 與名稱備援 | 服務類型：BuiltInParameter `RBS_CTC_SERVICE_TYPE` 找到，但 Definition.Name 為「服務類型:」（含冒號）；名稱「服務類型」「Service Type」皆找不到。備註：BuiltInParameter 找到；名稱「備註」找到；「Comments」找不到 | 已證實：內建參數必須以 BuiltInParameter 為主；現行名稱備援在本機無效 |
+| E4b | 同名參數在類型上是否存在 | 樣本的類型上 LookupParameter 皆 False | 樣本不足，未定論 |
+| E4c | IsReadOnly 能否回 True | CURVE_ELEM_LENGTH（長度）IsReadOnly True（導管、電纜架）；服務類型與備註 False | 已證實：唯讀可判定（以長度參數為例；候選參數原為 [憑記憶]） |
+| E4d | StorageType 比對方式 | 字串化結果為 `'3'`（String）與 `'2'`（Double，長度） | 已證實：reader 應與列舉比較，不比對文字名稱 |
+| E4e | HasValue、AsString（服務類型／備註） | 所有 BuiltInParameter 樣本 HasValue False、AsString None | 已證實：測試模型的服務類型與備註皆空。非空值尚未測（見 9.2） |
+| E5 | 16 個共用參數：GUID 查找與名稱查找 | 2 個機櫃樣本皆為 Excel 版（`SCADA_機櫃_XLSX-003-01_機廠TSS`）。GUID 查找 0/32 找到；名稱查找每台 8 個找到，且讀到非空值（編號 `XLSX-003-01`、機櫃類型、寬 `600`、深 `800`、高 `2100`、尺寸、來源文件、定位來源） | 已證實：SoW V6 的 GUID 在此模型不符（見 9.1）。同名的 8 個參數，GUID 全部與字典不同 |
+| E6 | 工作集 | 非協作模型（IsWorkshared False），記 N/A | 未測 |
+| E7 | 連結模型 | 1 個 RevitLinkInstance，名稱 `建築結構_1.rvt`，位置未共用 | 數量已證實；連結內元件未測 |
+| E8 | 執行前後 IsModified | 前 True、後 True | 無法證明未修改（見 9.3） |
+
+### 9.1 共用參數衝突（最重要）
+
+Excel 版共用參數檔 `D:\SCADA_主題導覽\01_BIM model\SCADA_機櫃_Dynamo\Excel_機櫃族群\族群\SCADA_Excel_SharedParameters.txt`（只讀比對）：16 個參數，群組 `SCADA_Excel_Racks`。
+
+- 與字典同名的 8 個參數（編號、機櫃類型、寬、深、高、尺寸、來源文件、定位來源）：**GUID 全部不同**。
+- 只存在於 Excel 版的 8 個參數：`SCADA_項次`、`SCADA_安裝位置`、`SCADA_機櫃規格`、`SCADA_配置數量`、`SCADA_台序`、`SCADA_BIM設計與應用說明`、`SCADA_來源工作表`、`SCADA_來源列`。
+- 字典中不存在於 Excel 版的 8 個參數：期別、站點、建物、房間、附錄D項次、UPS電源110V、附錄F項次、備註。
+
+結論：專案同時有兩套 SCADA 機櫃族群（SoW V6 與 Excel 版），同名參數的 GUID 不同。字典目前只涵蓋 SoW V6。
+
+### 9.2 尚未實證（需第二次探針）
+
+- **非空字串讀取**：機櫃共用參數已讀到非空字串（HasValue True，AsString 有值，見 E5）。但服務類型與備註的 BuiltInParameter 樣本全部為空（HasValue False），尚未測試非空值。審核方原文「全部 9 個樣本 HasValue=False」僅指服務類型與備註樣本，不包含機櫃共用參數。
+- **唯讀共用參數**：只有長度參數測過唯讀（True）；共用參數中的唯讀者尚未測。
+- **工作集**：非協作模型，未測。
+- **連結模型內元件**：未測。
+- **類型參數**：本次樣本的類型上找不到同名參數，樣本不足。
+
+### 9.3 IsModified 基準
+
+執行前 IsModified 即為 True（模型存檔於 14:06，探針執行於 14:15，之間有未存的變更）。因此本次**無法**用 IsModified 證明探針未修改文件。第二次探針須先存檔，再執行。
 
 ## 7. 自動驗收（已完成）
 
@@ -107,3 +136,15 @@
 - 探針在真實 Revit 中的完整執行（僅假模組驗證）。
 - 探針報告的內容是否完整（以審核方閱讀為準）。
 - 探針不做的事：不驗證 reader 本身、不驗證快照契約與真實資料、不驗證 Excel 開啟 CSV。
+
+## 10. 第二次探針（不需修改程式）
+
+測試模型要求：
+
+1. 先把測試模型**存檔**，再執行探針（預期 IsModified 前後皆 False）。
+2. 放入 SoW V6 版機櫃族群 RFA（`D:\SCADA_主題導覽\01_BIM model\SCADA_機櫃_Dynamo\族群\`）與 Excel 版機櫃族群 RFA（`...\SCADA_機櫃_Dynamo\Excel_機櫃族群\`）各一，各放置 1 個。
+3. 至少一個電氣設備，備註 = `SCADA`。
+4. 至少一條電管，服務類型 = `SCADA`。
+5. 其餘同第 2 節（只使用新建並另存的測試模型）。
+
+目的：補測非空值（內建的服務類型與備註）、SoW V6 機櫃的 GUID 查找、唯讀共用參數，以及 IsModified 前後不變。
