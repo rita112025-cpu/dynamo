@@ -157,5 +157,89 @@ class LoadFileTest(unittest.TestCase):
             load_dictionary(os.path.join(self.dir, "nope.json"))
 
 
+# GUIDs read from SCADA_SoW_V6_SharedParameters.txt (UTF-16, sha256 5d8ced89...c9711), in file order.
+SOURCE_GUIDS = (
+    "81bdc77b-c362-4012-aa80-6edd256f9b09", "b1b763ae-f6db-44bf-b7a5-ad35ea29ad9c",
+    "f1f6fdc5-7006-44e2-a7d0-60ae0647f0d0", "8a59691b-8411-4799-a4b5-693cf1661e67",
+    "53413beb-fd65-4b80-8753-db471cb8319c", "3e00233a-044f-4b21-bca3-fa1ce26ba6e5",
+    "e0f8b8a1-3ba8-49e3-9b11-e40b4b710d06", "b9f4ce69-08e6-4908-b23b-56a384832f43",
+    "896f98f9-1b6f-4a9f-9a85-3cfa29758348", "a6d1af90-4cc8-48c0-a233-f204e0abad5b",
+    "42b9f865-f078-4b52-93b3-852e19aeafa6", "b662bf65-c745-4d14-beaf-4dcc180dc298",
+    "aa933f19-c018-4d63-887b-d388eef2ec0a", "a26cb5cc-1c1d-400b-b011-5c77e3a44b4b",
+    "4cb549c0-2004-4250-8d34-8c10252c4a4f", "82607d24-24b2-4a1f-94fe-109bfff58ad1",
+)
+
+
+class SharedParameterTest(unittest.TestCase):
+    def test_shipped_names_and_guids_match_source_file(self):
+        params = load_dictionary(CONFIG).shared.parameters
+        self.assertEqual([(p.name, p.guid) for p in params], list(zip(SHARED_PARAMETER_NAMES, SOURCE_GUIDS)))
+
+    def test_shipped_types_and_source_hash(self):
+        shared = load_dictionary(CONFIG).shared
+        self.assertEqual({p.data_type for p in shared.parameters}, {"TEXT"})
+        self.assertEqual(shared.source_sha256, "5d8ced89fe445bf10b5e4e17bb47acca81bc0ff13544954328e57ecb58bc9711")
+        self.assertEqual(shared.applies_to_category, "OST_ElectricalEquipment")
+        self.assertEqual(shared.applies_to_family_contains, "SCADA_機櫃")
+
+    def test_guid_normalised_to_lower_case(self):
+        d = valid()
+        d["shared_parameters"]["parameters"][0]["guid"] = SOURCE_GUIDS[0].upper()
+        self.assertEqual(validate_dictionary(d).shared.parameters[0].guid, SOURCE_GUIDS[0])
+
+    def _reject(self, mutate, pattern):
+        d = valid()
+        mutate(d)
+        with self.assertRaisesRegex(DictionaryError, pattern):
+            validate_dictionary(d)
+
+    def test_bad_guid_formats(self):
+        for bad in ("81bdc77bc3624012aa806edd256f9b09", "81bdc77b-c362-4012-aa80-6edd256f9b0", "zzbdc77b-c362-4012-aa80-6edd256f9b09", "", None):
+            with self.subTest(guid=bad):
+                self._reject(lambda d: d["shared_parameters"]["parameters"][0].update(guid=bad), "not a valid GUID")
+
+    def test_duplicate_guid(self):
+        def m(d):
+            d["shared_parameters"]["parameters"][1]["guid"] = SOURCE_GUIDS[0].upper()
+        self._reject(m, "duplicate GUIDs")
+
+    def test_duplicate_name(self):
+        def m(d):
+            d["shared_parameters"]["parameters"][1]["name"] = d["shared_parameters"]["parameters"][0]["name"]
+        self._reject(m, "duplicate names")
+
+    def test_data_type_must_be_text(self):
+        for bad in ("Integer", "text", None):
+            with self.subTest(data_type=bad):
+                self._reject(lambda d: d["shared_parameters"]["parameters"][0].update(data_type=bad),
+                             "not in TEXT")
+
+    def test_missing_shared_block(self):
+        self._reject(lambda d: d.pop("shared_parameters"), "missing shared_parameters")
+
+    def test_shared_names_must_equal_rack_required(self):
+        self._reject(lambda d: d["shared_parameters"]["parameters"].pop(),
+                     r"differ: only in rack .*only in shared \[\]")
+        def extra(d):
+            d["shared_parameters"]["parameters"].append(
+                {"name": "SCADA_多出的", "guid": SOURCE_GUIDS[0].replace("8", "7", 1), "data_type": "TEXT"})
+        self._reject(extra, "differ")
+
+    def test_shared_applies_to_must_match_rack(self):
+        self._reject(lambda d: d["shared_parameters"]["applies_to"].update(family_name_contains="X"),
+                     "applies_to does not match")
+
+    def test_source_hash_format(self):
+        self._reject(lambda d: d["shared_parameters"].update(source_sha256="ABC"), "source_sha256")
+
+    def test_shared_block_unknown_key(self):
+        self._reject(lambda d: d["shared_parameters"].update(extra=1), "unknown key")
+
+    def test_pending_names_are_not_shared(self):
+        def m(d):
+            d["rack"]["pending_confirmation"][0]["parameter"] = "SCADA_定位來源"
+        self._reject(m, "also required")
+
+
 if __name__ == "__main__":
     unittest.main()

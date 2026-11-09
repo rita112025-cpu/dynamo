@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "_note": "All values are PROVISIONAL unless status is 'confirmed'. Reports must label them as 暫定判定值. Nothing here is a statement of compliance with the owner's specification.",
+  "thresholds": {
+    "cable_tray_gap_max": {
+      "kind": "gap",
+      "value": 50,
+      "unit": "mm",
+      "comparison": "<=",
+      "applies_to": "電纜架連接端點之間的缺口（疑似斷開的判定距離）",
+      "status": "provisional",
+      "source": "提案值（docs/M2_spec.md 第 4 節）；非業主規範原文",
+      "source_status": "提案值，無原文依據"
+    },
+    "cable_tray_endpoint_tolerance": {
+      "kind": "tolerance",
+      "value": 1,
+      "unit": "mm",
+      "comparison": "<=",
+      "applies_to": "已連接的橋架端點，其相距允許值（超過即 FAIL）",
+      "status": "provisional",
+      "source": "提案值（docs/M2_spec.md 第 4 節）；非業主規範原文",
+      "source_status": "提案值，無原文依據"
+    },
+    "cable_tray_floor_clearance": {
+      "kind": "height",
+      "value": 2500,
+      "unit": "mm",
+      "comparison": ">=",
+      "height_basis": "bottom",
+      "applies_to": "電纜架水平段；垂直與斜向本版不判定",
+      "status": "provisional",
+      "source": "業主需求書(四) 附錄C 第三章：「宜高出地面 ≥ 2.5 m」（條款位置與原文措辭待核對）",
+      "source_status": "待核對原文",
+      "note": "樓層標高不一定等於完成面；判定依橋架底面距關聯樓層的高度"
+    }
+  }
+}

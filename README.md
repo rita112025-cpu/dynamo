@@ -9,6 +9,8 @@
 - `mep_toolkit/snapshot.py`：元件快照驗證（日後 `revit_io` reader 的輸出契約）。見 `docs/snapshot_format.md`。
 - `mep_toolkit/completeness.py`：對快照做參數完整度檢查，輸出 Finding／CheckScope，經標準 CSV 輸出器寫出。
 - `scripts/make_sample_completeness.py`：以假快照產生 `examples/sample_completeness_*.csv`。
+- `config/thresholds.json`、`mep_toolkit/thresholds.py`：暫定門檻（50 mm、1 mm、2500 mm），每個都帶 `status`／`source`／`source_status`。所有報告一律標示「暫定判定值」，不得寫成符合業主規範。
+- `docs/M3_acceptance.md`：M3 驗收表（含未完成項目：建置腳本）。
 - `docs/M2_spec.md`：使用者選定的 M2 規格。
 - `docs/unverified_policy.md`：UNVERIFIED 何時可以出現。
 - `docs/M0_analysis.md`：Dynamo 部署方式比較、共用函式比對、`revit_io` 規劃。

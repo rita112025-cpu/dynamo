@@ -20,6 +20,8 @@ SOURCE = r"D:\fake\FAKE-ESC-TEST.rvt"
 def conduit(eid, value, **kw):
     base = {"element_id": eid, "category": "OST_Conduit", "family_name": "F", "parameters": {"服務類型": value}}
     base.update(kw)
+    if base.get("read_error"):
+        base["parameters"] = {}  # a read_error element must not carry parameters
     return base
 
 
@@ -34,6 +36,8 @@ def rack(eid, name="SCADA_機櫃_R01", params=None, **kw):
     base = {"element_id": eid, "category": "OST_ElectricalEquipment", "family_name": name,
             "parameters": rack_params() if params is None else params}
     base.update(kw)
+    if base.get("read_error"):
+        base["parameters"] = {}
     return base
 
 
@@ -97,6 +101,12 @@ class IdentificationTest(unittest.TestCase):
             self.assertIn("無此參數或為唯讀", f.reason)
         r = check_completeness([conduit(1, "x", parameters={})], DICT)
         self.assertIn("無此參數或為唯讀", by_check(r, "SCADA識別_OST_Conduit")[0].reason)
+
+    def test_read_failure_element_cannot_carry_parameters(self):
+        from mep_toolkit.snapshot import validate_elements
+        with self.assertRaisesRegex(SnapshotError, r"parameters \{\}"):
+            validate_elements([{"element_id": 1, "category": "OST_Conduit", "family_name": None,
+                                "parameters": {"服務類型": "SCADA"}, "read_error": "boom"}])
 
     def test_read_failure_is_unverified_with_exception_text(self):
         f = self.run_one("SCADA", read_error="InvalidObjectException: boom")

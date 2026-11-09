@@ -1,9 +1,11 @@
-"""Parameter dictionary: which parameters each category must carry, and the legal values.
+"""Parameter dictionary: which parameters each category must carry, the legal values,
+and the SCADA shared parameters (name, GUID, data type) read from the source file.
 
 The dictionary is a JSON file (see config/parameter_dictionary.json). `validate_dictionary`
 rejects anything ambiguous so a typo can never silently disable a check.
 """
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -17,6 +19,10 @@ KNOWN_CATEGORIES = (
     "OST_ElectricalFixtures",
     "OST_Wire",
 )
+
+GUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+ALLOWED_DATA_TYPES = ("TEXT",)  # the only type in the source file (SCADA_SoW_V6)
 
 
 class DictionaryError(ValueError):
@@ -48,9 +54,27 @@ class RackRule:
 
 
 @dataclass(frozen=True)
+class SharedParameter:
+    name: str
+    guid: str  # lower-case
+    data_type: str
+
+
+@dataclass(frozen=True)
+class SharedBlock:
+    source: str
+    source_sha256: str
+    group: str
+    applies_to_category: str
+    applies_to_family_contains: str
+    parameters: Tuple[SharedParameter, ...]
+
+
+@dataclass(frozen=True)
 class Dictionary:
     categories: Tuple[CategoryRule, ...]
     rack: RackRule
+    shared: SharedBlock
 
 
 def _reject_duplicate_keys(pairs):
@@ -88,11 +112,49 @@ def _only_keys(obj: Any, allowed: Tuple[str, ...], what: str) -> Dict[str, Any]:
     return obj
 
 
+def _parse_shared(raw: Any) -> SharedBlock:
+    obj = _only_keys(raw, ("source", "source_sha256", "group", "applies_to", "parameters"), "shared_parameters")
+    source = _text(obj.get("source"), "shared_parameters source")
+    sha = obj.get("source_sha256")
+    if not isinstance(sha, str) or not SHA256_RE.match(sha):
+        raise DictionaryError("shared_parameters source_sha256 must be 64 lower-case hex characters")
+    group = _text(obj.get("group"), "shared_parameters group")
+    applies = _only_keys(obj.get("applies_to"), ("category", "family_name_contains"), "shared_parameters applies_to")
+    category = _text(applies.get("category"), "shared applies_to category")
+    family = _text(applies.get("family_name_contains"), "shared applies_to family_name_contains")
+    items = obj.get("parameters")
+    if not isinstance(items, list) or not items:
+        raise DictionaryError("shared_parameters parameters must be a non-empty list")
+    params: List[SharedParameter] = []
+    for item in items:
+        po = _only_keys(item, ("name", "guid", "data_type"), "shared parameter")
+        name = _text(po.get("name"), "shared parameter name")
+        guid = po.get("guid")
+        if not isinstance(guid, str) or not GUID_RE.match(guid):
+            raise DictionaryError("shared parameter %s: GUID %r is not a valid GUID" % (name, guid))
+        data_type = po.get("data_type")
+        if data_type not in ALLOWED_DATA_TYPES:
+            raise DictionaryError("shared parameter %s: data_type %r not in %s"
+                                  % (name, data_type, ", ".join(ALLOWED_DATA_TYPES)))
+        params.append(SharedParameter(name, guid.lower(), data_type))
+    names = [p.name for p in params]
+    guids = [p.guid for p in params]
+    if len(set(names)) != len(names):
+        raise DictionaryError("shared_parameters has duplicate names")
+    if len(set(guids)) != len(guids):
+        raise DictionaryError("shared_parameters has duplicate GUIDs")
+    return SharedBlock(source, sha, group, category, family, tuple(params))
+
+
 def validate_dictionary(data: Any) -> Dictionary:
     """Return a Dictionary or raise DictionaryError."""
-    top = _only_keys(data, ("schema_version", "sources", "categories", "rack"), "dictionary")
-    if top.get("schema_version") != 1:
+    top = _only_keys(data, ("schema_version", "sources", "shared_parameters", "categories", "rack"), "dictionary")
+    version = top.get("schema_version")
+    if isinstance(version, bool) or not isinstance(version, int) or version != 1:
         raise DictionaryError("schema_version must be 1")
+    if "shared_parameters" not in top:
+        raise DictionaryError("dictionary is missing shared_parameters")
+    shared = _parse_shared(top["shared_parameters"])
     cats_raw = top.get("categories")
     if not isinstance(cats_raw, dict) or not cats_raw:
         raise DictionaryError("categories must be a non-empty object")
@@ -151,9 +213,23 @@ def validate_dictionary(data: Any) -> Dictionary:
     if len({p for p, _ in pending}) != len(pending):
         raise DictionaryError("rack pending_confirmation has duplicate parameters")
 
+    # Cross-checks: the rack's required parameters ARE the shared parameters, nothing more or less.
+    rack_set = set(required)
+    shared_set = {p.name for p in shared.parameters}
+    if rack_set != shared_set:
+        raise DictionaryError(
+            "rack required_parameters and shared_parameters differ: only in rack %s; only in shared %s"
+            % (sorted(rack_set - shared_set), sorted(shared_set - rack_set)))
+    if shared.applies_to_category != category or shared.applies_to_family_contains != contains:
+        raise DictionaryError("shared_parameters applies_to does not match the rack definition")
+    overlap = [p for p, _ in pending if p in shared_set]
+    if overlap:
+        raise DictionaryError("pending parameters must not be shared parameters: %s" % overlap)
+
     return Dictionary(
         tuple(categories),
         RackRule(category, contains, prefix, code, required, non_empty, tuple(pending)),
+        shared,
     )
 
 
@@ -162,8 +238,8 @@ def load_dictionary(path: str) -> Dictionary:
     try:
         with open(path, encoding="utf-8-sig") as fh:
             data = json.load(fh, object_pairs_hook=_reject_duplicate_keys)
-    except ValueError as ex:  # includes JSONDecodeError and DictionaryError
-        if isinstance(ex, DictionaryError):
-            raise
+    except DictionaryError:
+        raise
+    except ValueError as ex:
         raise DictionaryError("%s is not valid JSON: %s" % (path, ex)) from ex
     return validate_dictionary(data)
