@@ -31,7 +31,26 @@ python tools/make_dyn.py -o <資料夾>  # 指定資料夾（不可是既有的 
 
 節點執行時先**自檢**嵌入內容，與建置時寫入的雜湊相符才繼續；不符就明確報錯並不寫任何檔案。
 
+## AST 檢查：護欄，不是安全沙箱
+
+`tools/dyn_checks.py` 以 AST 檢查程式結構，分兩級：
+
+- **基本規則**（節點程式與模組）：禁止 Revit API 匯入與名稱（`clr`、`RevitAPI`、`Transaction`、`Document` 等）、
+  禁止寫入或持久化文件的呼叫（`Save`、`SaveAs`、`SynchronizeWithCentral`、`Delete`、`Commit` 等）。
+- **嚴格規則**（僅 `mep_toolkit` 模組原始碼）：另禁止 `__import__`、`importlib`、`builtins`、`eval`、`exec`、內建 `compile`；
+  `getattr`／`setattr`／`delattr`／`hasattr` 只允許名稱為**非禁止的字串常數**，名稱為變數或禁止名稱時一律違規。
+
+注意：`re.compile(...)` 是正規表示式建構子，不是內建 `compile()`，**不視為違規**（`mep_toolkit` 的 `dictionary.py`、`completeness.py` 使用它）。
+若要改為禁止，需改寫這兩處，請使用者決定。
+
+**這些檢查是防意外的護欄，不是安全沙箱。** 靜態檢查無法防止刻意的繞過；它的目的是攔住無心的 Revit 呼叫、
+動態取用屬性與動態執行程式碼。真正的隔離不由此檔提供。
+
 ## 輸入（兩個字串節點，建置時留空）
+
+**未設為 Dynamo 輸入（`IsSetAsInput` 為 false，且頂層 `Inputs` 為空）。** 原因：本專案中所有既有 Dynamo 3.3 存檔都沒有「已設為輸入」的節點，
+無法確認實際格式，因此不憑猜測寫入。日後若要讓 Dynamo Player 以輸入欄位顯示，需以實際存檔格式為準再處理。
+目前使用方式：在 Dynamo 中直接填寫兩個字串節點，或在建置前修改 `.dyn` 內的 `InputValue`（不建議，會影響可重現性）。
 
 | 輸入 | 必填 | 規則 |
 |---|---|---|
@@ -81,3 +100,12 @@ python tools/make_dyn.py -o <資料夾>  # 指定資料夾（不可是既有的 
 - 快照契約的實際來源（Revit reader 尚未實作，快照目前為假資料）。
 - 共用參數檔版次（審核方所述 10/28 版，本次只核對檔案雜湊）。
 - 規範值（50 mm、1 mm、2500 mm）仍為暫定值，且不在本節點的判定範圍（M4 才使用）。
+
+## 第二輪（EngineName、嚴格 AST 規則、輸入格式）的結果
+
+- 節點欄位：移除 `EngineName`，Python 節點鍵集合與參考存檔相同（測試 `test_python_node_keys_match_the_reference_dynamo_file`）。
+- 嚴格 AST 規則套用於 `mep_toolkit` 模組原始碼，目前所有模組通過（無違規）。節點範本的 `exec(compile(...))` 註冊邏輯只套用基本規則。
+- 輸入節點：未設為輸入（見上文），測試 `test_input_nodes_are_not_set_as_inputs_because_no_reference_exists`。
+- 產物：`out/完整度檢查_20261109-104100.dyn`，sha256 `b6143d78084f041f6cc34c811fe72cf451215f1ac17f904a1c18aff4bb82e4a5`。
+  兩次獨立建置位元組相同（已驗證）。核心 SHA-256 `3b96f7c5175cddfafd3e7bb7ef235b6946e9b1e2294481fd62c05b50262a8fc5`，字典 SHA-256 `586d810cd34e85834f66ccf56428c022a1325951cafe649f932b4a33ee5e24b1`（與前一版相同，因為模組與字典未變，只有 .dyn 外殼少了 EngineName）。
+- 舊產物 `完整度檢查_20261109-103501.dyn` 含 EngineName，已自 `out/` 移除（它是建置工具產生的，不是使用者資料）。
