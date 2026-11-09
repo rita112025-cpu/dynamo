@@ -127,5 +127,5 @@ Fill、VT 的 `open_target(path, info)` 與 Param、WS 的 `open_target(path, in
    規則如「參數不得為空」、`"設備編號~正規式"`（不得為空且須符合正規式），目前只輸出到 Watch 節點。
    後續應重用其規則解析並輸出 `Finding`／`CheckScope`，不要重寫。
 3. **`批次複製視圖樣板/BatchCopyViewTemplates.py` 沒有 `-ESC-` 檔名防呆**
-   （只有 `BatchFillScadaParams.py` 有 `FILE_NAME_MUST_CONTAIN`），
+   （`BatchFillScadaParams.py`、`BatchParamTools.py`、`BatchWorksets.py` 有 `FILE_NAME_MUST_CONTAIN`，只有視圖樣板這支沒有），
    但 `Dynamo批次處理_步驟說明.md` 的 FAQ 寫「靠 -ESC- 防呆跳過」，對視圖樣板這支不成立。只記錄，不修改。
