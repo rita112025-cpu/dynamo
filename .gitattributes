@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# csv.writer writes CRLF row endings; keep the sample byte-for-byte.
+*.csv -text
