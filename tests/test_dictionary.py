@@ -157,7 +157,12 @@ class LoadFileTest(unittest.TestCase):
             load_dictionary(os.path.join(self.dir, "nope.json"))
 
 
-# GUIDs read from SCADA_SoW_V6_SharedParameters.txt (UTF-16, sha256 5d8ced89...c9711), in file order.
+# Fixed regression baseline, deliberately hard-coded (16 GUIDs, file order).
+# Purpose: if the dictionary AND the source file are changed together, this constant still
+# catches it. It is NOT the main check. Main verification is dynamic: parse the shared
+# parameter file and compare both directions (tests/test_shared_consistency.py,
+# dictionary.verify_against_shared_file), which also detects source-file changes.
+# Origin: SCADA_SoW_V6_SharedParameters.txt (UTF-16, sha256 5d8ced89...c9711).
 SOURCE_GUIDS = (
     "81bdc77b-c362-4012-aa80-6edd256f9b09", "b1b763ae-f6db-44bf-b7a5-ad35ea29ad9c",
     "f1f6fdc5-7006-44e2-a7d0-60ae0647f0d0", "8a59691b-8411-4799-a4b5-693cf1661e67",
