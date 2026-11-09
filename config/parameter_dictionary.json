@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "dual_track": "G:\\Dynamo\\批次填參數\\BatchFillScadaParams.py (RULES: 服務類型 for conduit/cable tray, 備註 for equipment/fixtures/wire)",
+    "rack_shared_parameters": "D:\\SCADA_主題導覽\\01_BIM model\\SCADA_機櫃_Dynamo\\NWC\\SCADA_SoW_V6_SharedParameters.txt (UTF-16; sha256 5d8ced89fe445bf10b5e4e17bb47acca81bc0ff13544954328e57ecb58bc9711)",
+    "rack_family_name": "D:\\SCADA_主題導覽\\01_BIM model\\SCADA_機櫃_Dynamo\\scada_racks.py (family_name)"
+  },
+  "categories": {
+    "OST_Conduit": {
+      "label": "電管 Conduit",
+      "required": [{"parameter": "服務類型", "allowed": ["SCADA"]}]
+    },
+    "OST_ConduitFitting": {
+      "label": "電管配件 Conduit Fitting",
+      "required": [{"parameter": "服務類型", "allowed": ["SCADA"]}]
+    },
+    "OST_CableTray": {
+      "label": "電纜架 Cable Tray",
+      "required": [{"parameter": "服務類型", "allowed": ["SCADA"]}]
+    },
+    "OST_CableTrayFitting": {
+      "label": "電纜架配件 Cable Tray Fitting",
+      "required": [{"parameter": "服務類型", "allowed": ["SCADA"]}]
+    },
+    "OST_ElectricalEquipment": {
+      "label": "電氣設備 Electrical Equipment",
+      "required": [{"parameter": "備註", "allowed": ["SCADA"]}]
+    },
+    "OST_ElectricalFixtures": {
+      "label": "電氣裝置 Electrical Fixtures",
+      "required": [{"parameter": "備註", "allowed": ["SCADA"]}]
+    },
+    "OST_Wire": {
+      "label": "電線 Wire",
+      "required": [{"parameter": "備註", "allowed": ["SCADA"]}]
+    }
+  },
+  "rack": {
+    "category": "OST_ElectricalEquipment",
+    "family_name_contains": "SCADA_機櫃",
+    "family_name_prefix": "SCADA_機櫃_",
+    "code_parameter": "SCADA_編號",
+    "required_parameters": [
+      "SCADA_編號",
+      "SCADA_期別",
+      "SCADA_站點",
+      "SCADA_建物",
+      "SCADA_房間",
+      "SCADA_機櫃類型",
+      "SCADA_寬mm",
+      "SCADA_深mm",
+      "SCADA_高mm",
+      "SCADA_尺寸",
+      "SCADA_附錄D項次",
+      "SCADA_UPS電源110V",
+      "SCADA_附錄F項次",
+      "SCADA_來源文件",
+      "SCADA_備註",
+      "SCADA_定位來源"
+    ],
+    "non_empty_parameters": [
+      "SCADA_編號",
+      "SCADA_站點",
+      "SCADA_房間",
+      "SCADA_機櫃類型",
+      "SCADA_寬mm",
+      "SCADA_深mm",
+      "SCADA_高mm"
+    ],
+    "pending_confirmation": [
+      {
+        "parameter": "SCADA_前方淨距mm",
+        "reason": "scada_racks.py 由 CSV 欄位「前方淨距mm」加前綴產生，但共用參數檔(SoW_V6_SharedParameters.txt)沒有此名稱；尚未確認是否必填"
+      },
+      {
+        "parameter": "SCADA_後方淨距mm",
+        "reason": "同上（CSV 欄位「後方淨距mm」，共用參數檔沒有）"
+      },
+      {
+        "parameter": "SCADA_淨距依據",
+        "reason": "同上（CSV 欄位「淨距依據」，共用參數檔沒有）"
+      }
+    ]
+  }
+}

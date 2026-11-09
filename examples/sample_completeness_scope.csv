@@ -1,0 +1,10 @@
+﻿tool_version,run_time,model_file,check,examined,pass,fail,unverified,note
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,SCADA識別_OST_Conduit,6,1,4,1,
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,SCADA識別_OST_ConduitFitting,0,0,0,0,模型沒有 OST_ConduitFitting 元件，未檢查
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,SCADA識別_OST_CableTray,1,1,0,0,
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,SCADA識別_OST_CableTrayFitting,0,0,0,0,模型沒有 OST_CableTrayFitting 元件，未檢查
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,SCADA識別_OST_ElectricalEquipment,2,1,1,0,
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,SCADA識別_OST_ElectricalFixtures,0,0,0,0,模型沒有 OST_ElectricalFixtures 元件，未檢查
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,SCADA識別_OST_Wire,0,0,0,0,模型沒有 OST_Wire 元件，未檢查
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,機櫃_SCADA共用參數齊全,3,2,1,0,
+0.1.0,2026-11-09T10:30:00+08:00,FAKE-ESC-TEST-STATION.rvt,機櫃_族群名稱規則,3,2,1,0,

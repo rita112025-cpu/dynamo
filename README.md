@@ -1,10 +1,15 @@
-# Revit MEP 唯讀檢查工具箱（M1）
+# Revit MEP 唯讀檢查工具箱（M3）
 
 目前只有純 Python 套件 `mep_toolkit`，不連接 Revit、不讀寫 RVT。
 
 - `mep_toolkit/findings.py`：`Finding` 與 `Status`（PASS / FAIL / UNVERIFIED），以及 `CheckScope`（檢查範圍）。FAIL 與 UNVERIFIED 必須有原因。
 - `mep_toolkit/csv_report.py`：輸出兩種 CSV（UTF-8 BOM，Excel 可直接開；先寫暫存檔再改名）。
 - `scripts/make_sample_csv.py`：以假資料產生 `examples/` 下的兩個範例。
+- `mep_toolkit/dictionary.py`、`config/parameter_dictionary.json`：參數字典（載入與驗證）。見 `docs/parameter_dictionary.md`（含「待使用者確認」清單）。
+- `mep_toolkit/snapshot.py`：元件快照驗證（日後 `revit_io` reader 的輸出契約）。見 `docs/snapshot_format.md`。
+- `mep_toolkit/completeness.py`：對快照做參數完整度檢查，輸出 Finding／CheckScope，經標準 CSV 輸出器寫出。
+- `scripts/make_sample_completeness.py`：以假快照產生 `examples/sample_completeness_*.csv`。
+- `docs/M2_spec.md`：使用者選定的 M2 規格。
 - `docs/unverified_policy.md`：UNVERIFIED 何時可以出現。
 - `docs/M0_analysis.md`：Dynamo 部署方式比較、共用函式比對、`revit_io` 規劃。
 
