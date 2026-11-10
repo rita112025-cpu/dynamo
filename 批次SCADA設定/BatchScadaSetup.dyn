@@ -1,0 +1,332 @@
+{
+  "Uuid": "c7c18a50-a6f7-4259-bbbe-6f7ad916c342",
+  "IsCustomNode": false,
+  "Description": "Batch copy view templates and fill SCADA parameters in many RVT files in one pass",
+  "Name": "BatchScadaSetup",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.Directory, CoreNodeModels",
+      "Id": "cca715a6944244dbab8ca26cf1e55e30",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "73775ca5feba4b5d81c045485083310e",
+          "Name": "",
+          "Description": "Directory path.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "可讓您選取系統上的目錄，並傳回其路徑",
+      "HintPath": "C:\\",
+      "InputValue": "C:\\"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "5c9e041f1f1541bc9d2eb22dcab7be91",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "5b72ddd1f38f4fc7ba846a51f45560e8",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "[\"SCADA\"];"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "f573ca644de843b6b226d82340199bb9",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "5f31d85dd4ce4a8483eb126c7d2cfe21",
+          "Name": "",
+          "Description": "表示式在第 1 行的值",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "允許直接編寫 DesignScript 程式碼",
+      "Code": "\"SCADA\";"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "bd2d42569a4c4fa598cde8bf4e698ff3",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "92edf3cc2cb3415b8df61c9c1f6d7648",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "啟用在 True 與 False 之間選取",
+      "InputValue": false
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# One-pass SCADA setup for every .rvt file of a folder:\n#   1. copy view templates (and the filters they use) from the CURRENT document\n#   2. fill the SCADA identification parameters\n#        Conduit / cable tray (and fittings): Service Type (服務類型)\n#        Electrical equipment / fixtures / wires: Comments (備註)\n# Each target file is opened once, changed, and saved / synchronized once.\n# (Merged from BatchCopyViewTemplates.py and BatchFillScadaParams.py.)\n#\n# IN[0]: folder path (string) or list of .rvt paths\n# IN[1]: view template names to copy from the current document (default [\"SCADA\"])\n# IN[2]: text to write into the parameters (default \"SCADA\")\n# IN[3]: True  = write and save / synchronize each file\n#        False = dry run: each file is opened, planned changes are listed, NOTHING is saved\n#\n# The current document is the template source and is never a target.\n#\n# Template rules:\n#   - missing template      -> added\n#   - same name exists      -> replaced by the copy (views and view types that used the old one\n#                              are switched to the new one)\n#   - filters with an existing name keep the DESTINATION version\n#   - templates are not applied to views; apply \"SCADA\" to the 3D view yourself\n#\n# Parameter rules (never destructive):\n#   - empty value                      -> set to the text\n#   - same text but other case/spaces  -> corrected to the text (filters use \"equals\")\n#   - already the text                 -> left alone\n#   - any other non-empty value        -> KEPT, counted and listed in the report\n#   - missing / read-only parameter    -> counted, not changed\n#\n# If a file fails in either step nothing is saved for that file.\n# To cover more categories (for example communication devices), add a line to RULES.\nimport clr, os, re, uuid, shutil\n\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\nfrom Autodesk.Revit.DB import *\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\nfrom System import String\nfrom System.Collections.Generic import List\n\ndoc = DocumentManager.Instance.CurrentDBDocument\napp = doc.Application\n\nsrc_in = IN[0]\nnames = IN[1] if len(IN) > 1 and IN[1] else [\"SCADA\"]\nif isinstance(names, str):\n    names = [names]\nnames = [str(n) for n in names]\nVALUE = str(IN[2]).strip() if len(IN) > 2 and IN[2] else \"SCADA\"\nRUN = bool(IN[3]) if len(IN) > 3 else False\n\n# (parameter label, BuiltInParameter name, display-name fallbacks)\nSERVICE_TYPE = (\"服務類型\", \"RBS_CTC_SERVICE_TYPE\", (\"服務類型\", \"Service Type\"))\nCOMMENTS = (\"備註\", \"ALL_MODEL_INSTANCE_COMMENTS\", (\"備註\", \"Comments\"))\n\n# (report label, BuiltInCategory name, parameter)\nRULES = [\n    (\"電管 Conduit\", \"OST_Conduit\", SERVICE_TYPE),\n    (\"電管配件 Conduit Fitting\", \"OST_ConduitFitting\", SERVICE_TYPE),\n    (\"電纜架 Cable Tray\", \"OST_CableTray\", SERVICE_TYPE),\n    (\"電纜架配件 Cable Tray Fitting\", \"OST_CableTrayFitting\", SERVICE_TYPE),\n    (\"電氣設備 Electrical Equipment\", \"OST_ElectricalEquipment\", COMMENTS),\n    (\"電氣裝置 Electrical Fixtures\", \"OST_ElectricalFixtures\", COMMENTS),\n    (\"電線 Wire\", \"OST_Wire\", COMMENTS),\n]\n\n# Safety: only files whose name contains this text are processed (\"\" = no check).\n# A folder may hold other disciplines' models; stamping their elements SCADA would be wrong.\nFILE_NAME_MUST_CONTAIN = \"-ESC-\"\n\n\n# ---- pure helpers (no Revit API) ----\ndef decide(current, value):\n    \"\"\"What to do with a text parameter whose current value is `current`.\"\"\"\n    cur = (current or \"\").strip()\n    if cur == \"\":\n        return \"set\"\n    if current == value:\n        return \"same\"\n    if cur.upper() == value.upper():\n        return \"fix\"\n    return \"keep\"\n\n\ndef norm(p):\n    return os.path.normcase(os.path.abspath(p))\n\n\ndef to_list(x):\n    if x is None:\n        return []\n    if isinstance(x, str):\n        if not x.strip():\n            return []\n        if os.path.isdir(x):\n            return [os.path.join(x, f) for f in sorted(os.listdir(x))\n                    if f.lower().endswith('.rvt')\n                    and not re.search(r'\\.\\d{4}\\.rvt$', f, re.I)]  # skip backups\n        return [x]\n    return [str(p) for p in x if p]\n\n\n# ---- Revit helpers ----\ndef doc_paths(d):\n    \"\"\"File path of a document plus its central model path (if workshared).\"\"\"\n    paths = set()\n    if d.PathName:\n        paths.add(norm(d.PathName))\n    if d.IsWorkshared:\n        try:\n            central = ModelPathUtils.ConvertModelPathToUserVisiblePath(\n                d.GetWorksharingCentralModelPath())\n            if central:\n                paths.add(norm(central))\n        except Exception:\n            pass\n    return paths\n\n\nNS = \"BatchScada_\" + uuid.uuid4().hex  # unique namespace so re-runs don't clash\nfail_msgs = []\n\n\nclass UseDestinationTypes(IDuplicateTypeNamesHandler):\n    __namespace__ = NS\n\n    def OnDuplicateTypeNamesFound(self, args):\n        return DuplicateTypeAction.UseDestinationTypes\n\n\nclass SuppressWarnings(IFailuresPreprocessor):\n    \"\"\"Delete warnings silently; roll back on errors instead of showing a dialog.\"\"\"\n    __namespace__ = NS\n\n    def PreprocessFailures(self, accessor):\n        has_error = False\n        for f in accessor.GetFailureMessages():\n            if f.GetSeverity() == FailureSeverity.Warning:\n                accessor.DeleteWarning(f)\n            else:\n                has_error = True\n                fail_msgs.append(f.GetDescriptionText())\n        if has_error:\n            return FailureProcessingResult.ProceedWithRollBack\n        return FailureProcessingResult.Continue\n\n\ndef version_ok(info):\n    fmt = getattr(info, 'Format', None) or info.SavedInVersion\n    return str(app.VersionNumber) in str(fmt)\n\n\ndef open_target(path, info):\n    \"\"\"Return (document, temp local path or None). All worksets are opened so that\n    no element is silently missed.\"\"\"\n    mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(path)\n    opts = OpenOptions()\n    local = None\n    if info.IsWorkshared:\n        opts.DetachFromCentralOption = DetachFromCentralOption.DoNotDetach\n        opts.SetOpenWorksetsConfiguration(\n            WorksetConfiguration(WorksetConfigurationOption.OpenAllWorksets))\n        if info.IsCentral:\n            local = os.path.join(os.environ.get('TEMP'),\n                                 'BatchScada_%s_%s' % (uuid.uuid4().hex[:8], os.path.basename(path)))\n            local_mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(local)\n            WorksharingUtils.CreateNewLocal(mp, local_mp)\n            mp = local_mp\n    return app.OpenDocumentFile(mp, opts), local\n\n\ndef remove_temp_local(local):\n    if not local:\n        return\n    try:\n        if os.path.exists(local):\n            os.remove(local)\n        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)\n    except Exception:\n        pass\n\n\ndef commit_with_handling(t):\n    fho = t.GetFailureHandlingOptions()\n    fho.SetFailuresPreprocessor(SuppressWarnings())\n    fho.SetClearAfterRollback(True)\n    status = t.Commit(fho)\n    if status != TransactionStatus.Committed:\n        raise Exception(\"rolled back: \" + \"; \".join(fail_msgs))\n\n\n# ---- step 1: view templates ----\ndef copy_templates(tdoc, templates, write):\n    \"\"\"Copy (or only plan) the templates. Returns report lines.\"\"\"\n    log = []\n    existing = dict((v.Name, v) for v in FilteredElementCollector(tdoc).OfClass(View) if v.IsTemplate)\n    if not write:\n        for src in templates:\n            log.append(\"    template %s: %s\" % (\n                \"將取代\" if src.Name in existing else \"將新增\", src.Name))\n        return log\n\n    views = [v for v in FilteredElementCollector(tdoc).OfClass(View) if not v.IsTemplate]\n    vfts = list(FilteredElementCollector(tdoc).OfClass(ViewFamilyType))\n    opts = CopyPasteOptions()\n    opts.SetDuplicateTypeNamesHandler(UseDestinationTypes())\n    del fail_msgs[:]\n\n    t = Transaction(tdoc, \"Batch copy view templates\")\n    t.Start()\n    try:\n        for src in templates:\n            old = existing.get(src.Name)\n            if old is not None:\n                # Rename the old template first so the copy never clashes with it\n                old.Name = \"%s_old_%s\" % (src.Name, uuid.uuid4().hex[:8])\n\n            new_ids = ElementTransformUtils.CopyElements(\n                doc, List[ElementId]([src.Id]), tdoc, Transform.Identity, opts)\n            new_v = None\n            for i in new_ids:\n                e = tdoc.GetElement(i)\n                if isinstance(e, View) and e.IsTemplate:\n                    new_v = e\n                    break\n            if new_v is None or (old is not None and new_v.Id == old.Id):\n                raise Exception(\"copy failed: \" + src.Name)\n\n            if old is None:\n                log.append(\"    template added: \" + src.Name)\n            else:\n                for v in views:\n                    if v.ViewTemplateId == old.Id:\n                        v.ViewTemplateId = new_v.Id\n                for f in vfts:\n                    if f.DefaultTemplateId == old.Id:\n                        f.DefaultTemplateId = new_v.Id\n                tdoc.Delete(old.Id)\n                log.append(\"    template replaced: \" + src.Name)\n            if new_v.Name != src.Name:\n                new_v.Name = src.Name\n\n        commit_with_handling(t)\n    except Exception:\n        if t.HasStarted() and not t.HasEnded():\n            t.RollBack()\n        raise\n    return log\n\n\n# ---- step 2: parameters ----\ndef get_param(el, bip_name, pnames):\n    bip = getattr(BuiltInParameter, bip_name, None)\n    p = el.get_Parameter(bip) if bip is not None else None\n    if p is None:\n        for n in pnames:\n            p = el.LookupParameter(n)\n            if p is not None:\n                break\n    return p\n\n\ndef fill_category(tdoc, label, cat_name, prm, write):\n    \"\"\"Fill (or just count) one category. Returns (report line, changed count).\"\"\"\n    counts = {\"set\": 0, \"fix\": 0, \"same\": 0, \"keep\": 0, \"noparam\": 0, \"failed\": 0}\n    kept = []\n    bic = getattr(BuiltInCategory, cat_name, None)\n    if bic is None:\n        return \"    %s: category not found in this Revit version\" % label, 0\n    for el in FilteredElementCollector(tdoc).OfCategory(bic).WhereElementIsNotElementType():\n        p = get_param(el, prm[1], prm[2])\n        if p is None or p.IsReadOnly or p.StorageType != StorageType.String:\n            counts[\"noparam\"] += 1\n            continue\n        current = p.AsString()\n        action = decide(current, VALUE)\n        if action == \"keep\":\n            counts[\"keep\"] += 1\n            if len(kept) < 3 and current not in kept:\n                kept.append(current)\n            continue\n        if action == \"same\":\n            counts[\"same\"] += 1\n            continue\n        if write:\n            try:\n                p.Set.Overloads[String](VALUE)\n            except Exception:\n                counts[\"failed\"] += 1  # for example owned by another user\n                continue\n        counts[action] += 1\n    verb = \"已填\" if write else \"將填\"\n    line = (\"    %s [%s]: %s %d, 修正大小寫/空格 %d, 原本就是 %s %d, 保留他值 %d, 無此參數或唯讀 %d, 失敗 %d\"\n            % (label, prm[0], verb, counts[\"set\"], counts[\"fix\"], VALUE, counts[\"same\"],\n               counts[\"keep\"], counts[\"noparam\"], counts[\"failed\"]))\n    if kept:\n        line += \"\\n      保留的他值範例: \" + \" | \".join(kept)\n    return line, counts[\"set\"] + counts[\"fix\"]\n\n\ndef fill_params(tdoc, write):\n    lines = []\n    changed = 0\n    t = None\n    if write:\n        del fail_msgs[:]\n        t = Transaction(tdoc, \"Batch fill SCADA parameters\")\n        t.Start()\n    try:\n        for label, cat_name, prm in RULES:\n            line, n = fill_category(tdoc, label, cat_name, prm, write)\n            lines.append(line)\n            changed += n\n        if write:\n            commit_with_handling(t)\n    except Exception:\n        if t is not None and t.HasStarted() and not t.HasEnded():\n            t.RollBack()\n        raise\n    return lines, changed\n\n\ndef save(tdoc):\n    if tdoc.IsWorkshared:\n        swc = SynchronizeWithCentralOptions()\n        swc.SetRelinquishOptions(RelinquishOptions(True))\n        swc.Comment = \"Batch SCADA setup (view templates + parameters)\"\n        tdoc.SynchronizeWithCentral(TransactWithCentralOptions(), swc)\n    else:\n        tdoc.Save()\n\n\n# ---- main ----\ntemplates = [v for v in FilteredElementCollector(doc).OfClass(View)\n             if v.IsTemplate and v.Name in names]\nfound = [v.Name for v in templates]\nreport = [\"Mode: %s | value: %s\" % (\"WRITE\" if RUN else \"DRY RUN (nothing is saved)\", VALUE),\n          \"Source templates (%d): %s\" % (len(templates), \", \".join(found))]\nreport += [\"[NOT FOUND in source] \" + n for n in names if n not in found]\n\n# The current document is the source and never a target; documents already open or loaded\n# as links cannot be reopened\nsrc_paths = doc_paths(doc)\nopen_paths = set()\nfor d in app.Documents:\n    open_paths |= doc_paths(d)\nopen_paths -= src_paths\n\ntargets = [p for p in to_list(src_in) if norm(p) not in src_paths]\nif not targets:\n    report.append(\"[NO TARGET FILES] check IN[0] folder path\")\n\nif not templates:\n    report.append(\"[STOP] no source template found in the current document - open the file that has it\")\nelse:\n    # Close Dynamo's own transaction before opening other documents\n    TransactionManager.Instance.ForceCloseTransaction()\n    for p in targets:\n        if norm(p) in open_paths:\n            report.append(\"[SKIP already open or loaded as link - unload it first] \" + p)\n            continue\n        if FILE_NAME_MUST_CONTAIN and FILE_NAME_MUST_CONTAIN.upper() not in os.path.basename(p).upper():\n            report.append(\"[SKIP file name has no '%s' - not a SCADA file] %s\" % (FILE_NAME_MUST_CONTAIN, p))\n            continue\n        try:\n            info = BasicFileInfo.Extract(p)\n        except Exception as ex:\n            report.append(\"[ERROR read] %s: %s\" % (p, ex))\n            continue\n        if not version_ok(info):\n            report.append(\"[SKIP version mismatch] \" + p)\n            continue\n        tdoc, local = None, None\n        try:\n            tdoc, local = open_target(p, info)\n            tpl_lines = copy_templates(tdoc, templates, RUN)\n            param_lines, _ = fill_params(tdoc, RUN)\n            if RUN:\n                save(tdoc)\n            report.append(\"%s %s (workshared=%s)\" % (\"[OK]\" if RUN else \"[DRY RUN]\", p, info.IsWorkshared))\n            report += tpl_lines\n            report += param_lines\n        except Exception as ex:\n            report.append(\"[ERROR - nothing saved for this file] %s: %s\" % (p, ex))\n        finally:\n            if tdoc is not None:\n                tdoc.Close(False)\n            remove_temp_local(local)\n\nOUT = report\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "291a4cde782848d5b575fabeebd34133",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "f7ba47c2773646139492d1303082d776",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "989b8569c8ba423da26dbe46cbf6df62",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "c0511798a78f4ec087249d7d0537fe03",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "e2ed6c82e85042b69f4ba6e4bd4e30ce",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "1f15d6be0117437c88809c2d05b57dc5",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "執行嵌入的 Python 指令碼。"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "WatchWidth": 200.0,
+      "WatchHeight": 200.0,
+      "Id": "225b0b2ea41842b0ac90b02e8256c49f",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "0e5fd79495e34ff8af576562634e59bc",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "fdfbe2f9681e4fb29dc91dbd232d7676",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "視覺化節點的輸出"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "73775ca5feba4b5d81c045485083310e",
+      "End": "f7ba47c2773646139492d1303082d776",
+      "Id": "76dc2ba28d72491ea3158b2dbf76cc02",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "5b72ddd1f38f4fc7ba846a51f45560e8",
+      "End": "989b8569c8ba423da26dbe46cbf6df62",
+      "Id": "4e3b51954f5d4735850584ce547ec30e",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "5f31d85dd4ce4a8483eb126c7d2cfe21",
+      "End": "c0511798a78f4ec087249d7d0537fe03",
+      "Id": "54b25e88639f492d9bad9089f9115588",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "92edf3cc2cb3415b8df61c9c1f6d7648",
+      "End": "e2ed6c82e85042b69f4ba6e4bd4e30ce",
+      "Id": "2d70b0fd1a594b2eb89c794294c184ad",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "1f15d6be0117437c88809c2d05b57dc5",
+      "End": "0e5fd79495e34ff8af576562634e59bc",
+      "Id": "7ca9494d560d4ed0895d1e09b2f7847a",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": null,
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "性質",
+      "Version": "3.3",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "8.2",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "無",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.2.11986",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "背景預覽(_B)",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "cca715a6944244dbab8ca26cf1e55e30",
+        "Name": "Directory Path (target folder)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "5c9e041f1f1541bc9d2eb22dcab7be91",
+        "Name": "Template names to copy (SCADA)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 150.0
+      },
+      {
+        "Id": "f573ca644de843b6b226d82340199bb9",
+        "Name": "Value to write (SCADA)",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 300.0
+      },
+      {
+        "Id": "bd2d42569a4c4fa598cde8bf4e698ff3",
+        "Name": "Run? False = dry run",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 450.0
+      },
+      {
+        "Id": "291a4cde782848d5b575fabeebd34133",
+        "Name": "Batch SCADA Setup",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 450.0,
+        "Y": 220.0
+      },
+      {
+        "Id": "225b0b2ea41842b0ac90b02e8256c49f",
+        "Name": "Report",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 800.0,
+        "Y": 220.0
+      }
+    ],
+    "Annotations": [],
+    "X": 100.0,
+    "Y": 100.0,
+    "Zoom": 0.9
+  }
+}
