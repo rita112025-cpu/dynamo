@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Menu for the five Dynamo tools. Starts Revit 2025 only when it is not already running.
+  Menu for the Dynamo tools listed in launcher/tools.json. Starts Revit 2025 only when it is not already running.
 
 .DESCRIPTION
   Pick one tool from launcher/tools.json and an existing .rvt. This script then calls
@@ -19,14 +19,6 @@
 #>
 $ErrorActionPreference = 'Stop'
 
-$script:ToolboxToolOrder = @(
-  'copy-view-templates',
-  'fill-scada-params',
-  'assign-worksets',
-  'param-tools',
-  'excel-sync'
-)
-
 $script:RevitAlreadyRunningMessage = 'Revit 2025 is already running. Close Revit, then run this again. This launcher does not attach to an open Revit session.'
 
 function Read-Utf8Text([string]$Path) {
@@ -37,16 +29,20 @@ function Read-Utf8Text([string]$Path) {
 function Get-DynamoToolboxCatalog {
   $jsonPath = Join-Path $PSScriptRoot 'tools.json'
   if (-not (Test-Path -LiteralPath $jsonPath)) { throw "tools.json not found: $jsonPath" }
-  $tools = (Read-Utf8Text -Path $jsonPath | ConvertFrom-Json).tools
+  $tools = @((Read-Utf8Text -Path $jsonPath | ConvertFrom-Json).tools)
+  if ($tools.Count -lt 1) { throw 'tools.json does not list any tools.' }
   $catalog = @()
-  foreach ($id in $script:ToolboxToolOrder) {
-    $tool = $tools | Where-Object { $_.id -eq $id } | Select-Object -First 1
-    if (-not $tool) { throw "tools.json is missing ToolId '$id'." }
+  $seen = @{}
+  foreach ($tool in $tools) {
+    $id = [string]$tool.id
+    if ([string]::IsNullOrWhiteSpace($id)) { throw 'tools.json has an entry with no id.' }
+    if ($seen.ContainsKey($id)) { throw "tools.json lists ToolId '$id' more than once." }
+    $seen[$id] = $true
     if ([string]::IsNullOrWhiteSpace($tool.name) -or [string]::IsNullOrWhiteSpace($tool.dyn)) {
       throw "tools.json entry '$id' needs a name and a dyn path."
     }
     $catalog += [pscustomobject]@{
-      Id   = [string]$tool.id
+      Id   = $id
       Name = [string]$tool.name
       Dyn  = [string]$tool.dyn
     }
@@ -105,7 +101,7 @@ function Show-DynamoToolboxForm {
   $form.FormBorderStyle = 'FixedDialog'
   $form.MaximizeBox = $false
   $form.StartPosition = 'CenterScreen'
-  $form.ClientSize = New-Object System.Drawing.Size(560, 480)
+  $form.ClientSize = New-Object System.Drawing.Size(560, 508)
   $form.Font = New-Object System.Drawing.Font($fontName, 10)
 
   $intro = New-Object System.Windows.Forms.Label
@@ -122,7 +118,7 @@ function Show-DynamoToolboxForm {
 
   $script:toolList = New-Object System.Windows.Forms.ListBox
   $script:toolList.Location = New-Object System.Drawing.Point(16, 96)
-  $script:toolList.Size = New-Object System.Drawing.Size(528, 140)
+  $script:toolList.Size = New-Object System.Drawing.Size(528, 168)
   $script:toolList.IntegralHeight = $false
   foreach ($tool in $script:catalog) {
     [void]$script:toolList.Items.Add($tool.Name)
@@ -131,18 +127,18 @@ function Show-DynamoToolboxForm {
   $form.Controls.Add($script:toolList)
 
   $projectLabel = New-Object System.Windows.Forms.Label
-  $projectLabel.Location = New-Object System.Drawing.Point(16, 248)
+  $projectLabel.Location = New-Object System.Drawing.Point(16, 276)
   $projectLabel.Size = New-Object System.Drawing.Size(528, 20)
   $projectLabel.Text = 'Existing project (.rvt)'
   $form.Controls.Add($projectLabel)
 
   $script:projectBox = New-Object System.Windows.Forms.TextBox
-  $script:projectBox.Location = New-Object System.Drawing.Point(16, 272)
+  $script:projectBox.Location = New-Object System.Drawing.Point(16, 300)
   $script:projectBox.Size = New-Object System.Drawing.Size(400, 24)
   $form.Controls.Add($script:projectBox)
 
   $browse = New-Object System.Windows.Forms.Button
-  $browse.Location = New-Object System.Drawing.Point(424, 270)
+  $browse.Location = New-Object System.Drawing.Point(424, 298)
   $browse.Size = New-Object System.Drawing.Size(120, 28)
   $browse.Text = '&Browse...'
   $browse.Add_Click({
@@ -158,19 +154,19 @@ function Show-DynamoToolboxForm {
   $form.Controls.Add($browse)
 
   $hint = New-Object System.Windows.Forms.Label
-  $hint.Location = New-Object System.Drawing.Point(16, 312)
+  $hint.Location = New-Object System.Drawing.Point(16, 340)
   $hint.Size = New-Object System.Drawing.Size(528, 48)
   $hint.Text = 'Templates (.rte) are not opened. If Revit 2025 is already running, close it before Launch.'
   $form.Controls.Add($hint)
 
   $launch = New-Object System.Windows.Forms.Button
-  $launch.Location = New-Object System.Drawing.Point(16, 380)
+  $launch.Location = New-Object System.Drawing.Point(16, 408)
   $launch.Size = New-Object System.Drawing.Size(140, 32)
   $launch.Text = '&Launch'
   $launch.Add_Click({
     $index = $script:toolList.SelectedIndex
     if ($index -lt 0 -or $index -ge $script:catalog.Count) {
-      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, 'Pick one of the five tools.', 'Dynamo toolbox', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, 'Pick one tool.', 'Dynamo toolbox', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
       return
     }
     $project = $script:projectBox.Text.Trim().Trim('"')
@@ -195,7 +191,7 @@ function Show-DynamoToolboxForm {
   $form.Controls.Add($launch)
 
   $close = New-Object System.Windows.Forms.Button
-  $close.Location = New-Object System.Drawing.Point(168, 380)
+  $close.Location = New-Object System.Drawing.Point(168, 408)
   $close.Size = New-Object System.Drawing.Size(140, 32)
   $close.Text = '&Close'
   $close.Add_Click({ $script:toolboxForm.Close() })

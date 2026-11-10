@@ -5,6 +5,7 @@
     { "id": "fill-scada-params",   "name": "批次填寫 SCADA 參數", "dyn": "批次填參數/BatchFillScadaParams.dyn" },
     { "id": "assign-worksets",     "name": "批次分配工作集",     "dyn": "批次工作集/BatchWorksets.dyn" },
     { "id": "param-tools",         "name": "Revit 參數工具",     "dyn": "批次參數工具/BatchParamTools.dyn" },
-    { "id": "excel-sync",          "name": "Excel／Revit 同步",  "dyn": "Excel參數同步/ExcelRevitSync.dyn" }
+    { "id": "excel-sync",          "name": "Excel／Revit 同步",  "dyn": "Excel參數同步/ExcelRevitSync.dyn" },
+    { "id": "batch-scada-setup",   "name": "批次 SCADA 設定",    "dyn": "批次SCADA設定/BatchScadaSetup.dyn" }
   ]
 }
