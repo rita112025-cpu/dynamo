@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Create a desktop shortcut that opens the five-tool Dynamo menu.
+  Create a desktop shortcut that opens the Dynamo toolbox menu.
 
 .DESCRIPTION
   Writes "Dynamo Toolbox" on the current user's desktop. The shortcut starts

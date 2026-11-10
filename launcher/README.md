@@ -1,6 +1,6 @@
 # Dynamo 工具箱啟動器
 
-從桌面捷徑選五個工具其中一個，再開一個已經存在的 `.rvt`。Revit 2025 必須是關閉的。啟動器會寫一份系統 ANSI、沒有 BOM 的 journal，然後啟動 Revit、開啟該專案，並以手動模式載入對應的 `.dyn`。圖形不會自動執行。
+從桌面捷徑選一個工具，再開一個已經存在的 `.rvt`。Revit 2025 必須是關閉的。啟動器會寫一份系統 ANSI、沒有 BOM 的 journal，然後啟動 Revit、開啟該專案，並以手動模式載入對應的 `.dyn`。圖形不會自動執行。
 
 Revit 2025 如果已經在跑，視窗會請你先關閉它，然後停止。不會接到已經開啟的 Revit。
 
@@ -24,6 +24,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\launcher\Install-Dynam
    - `assign-worksets`：批次分配工作集
    - `param-tools`：Revit 參數工具
    - `excel-sync`：Excel／Revit 同步
+   - `batch-scada-setup`：批次 SCADA 設定（`BatchScadaSetup.dyn`）
 4. Browse 選一個已經存在的 `.rvt`。不要選 `.rte` 樣板。
 5. Launch。
 
