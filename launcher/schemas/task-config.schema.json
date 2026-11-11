@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dynamo-toolbox/task-config.schema.json",
+  "title": "Dynamo toolbox task queue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "hostProject", "jobs"],
+  "properties": {
+    "version": { "const": 1 },
+    "sessionName": { "type": "string", "minLength": 1 },
+    "hostProject": {
+      "type": "string",
+      "description": "Existing .rvt opened as the host document. The queue does not open an .rte template."
+    },
+    "confirmWrite": {
+      "type": "boolean",
+      "default": false,
+      "description": "Must be true before any job may set its dry-run input to true."
+    },
+    "jobs": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Execution order. This array order is kept; it is not sorted back into tools.json order.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["toolId"],
+        "properties": {
+          "toolId": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "inputs": {
+            "type": "object",
+            "description": "Keys must match the tool's inputs in tools.json. Omitted keys use the declared default. A missing run value becomes false."
+          }
+        }
+      }
+    }
+  }
+}

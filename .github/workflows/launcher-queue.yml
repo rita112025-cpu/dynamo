@@ -1,0 +1,33 @@
+name: launcher queue tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PowerShell
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eux
+          . /etc/os-release
+          wget -q "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb"
+          sudo dpkg -i packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y powershell
+      - name: Run queue tests
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./launcher/tests/Invoke-QueueTests.ps1
+          else
+            pwsh -NoProfile -File ./launcher/tests/Invoke-QueueTests.ps1
+          fi
