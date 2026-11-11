@@ -1,0 +1,26 @@
+{
+  "tools": [
+    {
+      "id": "model-inspector",
+      "name": "Model inspector",
+      "dyn": "model-inspector/ModelInspector.dyn",
+      "supportsDryRun": false,
+      "inputs": [
+        {"name": "scope", "type": "string", "label": "Scope", "required": false, "default": "all"}
+      ]
+    },
+    {
+      "id": "dwg-import",
+      "name": "DWG import",
+      "dyn": "dwg-import/DwgImport.dyn",
+      "supportsDryRun": true,
+      "dryRunInput": "run",
+      "inputs": [
+        {"name": "dwg", "type": "file", "label": "DWG file", "required": true},
+        {"name": "copies", "type": "integer", "label": "Copies", "required": false, "default": 1},
+        {"name": "scale", "type": "number", "label": "Scale", "required": false, "default": 1.5},
+        {"name": "run", "type": "boolean", "label": "Write", "required": false, "default": false, "writesModel": true}
+      ]
+    }
+  ]
+}
