@@ -171,7 +171,8 @@ function Invoke-DynamoQueueTestSuite {
   }
 
   Test-Case 'legacy tools.json without contract fields still loads' {
-    $legacy = Read-DynamoToolboxCatalog -Json '{"tools":[{"id":"legacy-tool","name":"Legacy","dyn":"legacy/Legacy.dyn"}]}'
+    $legacyCatalog = '{"tools":[{"id":"legacy-tool","name":"Legacy","dyn":"legacy/Legacy.dyn"}]}'
+    $legacy = Read-DynamoToolboxCatalog -Json $legacyCatalog
     Assert-Equal $legacy.Length 1 'legacy count'
     Assert-True (-not $legacy[0].SupportsDryRun) 'legacy dry-run'
     $legacyJob = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"legacy-tool","inputs":{}}]}'
@@ -224,7 +225,8 @@ function Invoke-DynamoQueueTestSuite {
   $work = Join-Path ([System.IO.Path]::GetTempPath()) ('dynamo-queue-' + [guid]::NewGuid().ToString('N'))
 
   Test-Case 'run log, csv, markdown, and html round-trip' {
-    $chinese = Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"sessionName":"範例批次","hostProject":"C:/模型/範例宿主.rvt","confirmWrite":false,"jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/模型/範例批次","value":"SAMPLE","run":false}}]}'
+    $chineseJson = '{"version":1,"sessionName":"範例批次","hostProject":"C:/模型/範例宿主.rvt","confirmWrite":false,"jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/模型/範例批次","value":"SAMPLE","run":false}}]}'
+    $chinese = Resolve-DynamoTaskQueue -Catalog $catalog -Config $chineseJson
     $logged = New-DynamoQueueSession -Plan $chinese -SessionId 'batch_20261111_060000' -CreatedAt '2026-11-11T06:00:00'
     Assert-Equal $logged.sessionId 'batch_20261111_060000' 'slug'
     $paths = Export-DynamoQueueSession -Session $logged -OutputDirectory $work -UpdatedAt '2026-11-11T06:00:01'
@@ -257,7 +259,8 @@ function Invoke-DynamoQueueTestSuite {
     Assert-Throws {
       Set-DynamoQueueJobResult -Session $logged -Index 1 -Status 'written' -EndedAt '2026-11-11T06:02:00'
     } '不能記錄成已寫入'
-    Set-DynamoQueueJobResult -Session $logged -Index 1 -Status 'dry-run' -Counts @{ files = 2; changed = 0 } -Errors @('bad, <bad>') -EndedAt '2026-11-11T06:02:00' | Out-Null
+    $marked = 'bad, ' + [char]60 + 'bad' + [char]62
+    Set-DynamoQueueJobResult -Session $logged -Index 1 -Status 'dry-run' -Counts @{ files = 2; changed = 0 } -Errors @($marked) -EndedAt '2026-11-11T06:02:00' | Out-Null
     Assert-Equal $logged.jobs[0].counts.files 2 'count files'
     Assert-Equal $logged.jobs[0].counts.changed 0 'count changed'
     Assert-True ($null -eq $logged.jobs[0].counts.skipped) 'count skipped stays empty'
@@ -265,10 +268,11 @@ function Invoke-DynamoQueueTestSuite {
     $csv = [System.IO.File]::ReadAllText($paths.Csv)
     $lines = @($csv.TrimEnd().Split("`n") | Where-Object { $_.Trim() -ne '' })
     Assert-Equal $lines.Count 2 'csv has one data row'
-    Assert-True ($csv.Contains('"bad, <bad>"')) 'csv quotes comma'
+    Assert-True ($csv.Contains('"' + $marked + '"')) 'csv quotes comma'
     $html = [System.IO.File]::ReadAllText($paths.Html)
-    Assert-True ($html.Contains('&lt;bad&gt;')) 'html escapes markup'
-    Assert-True (-not $html.Contains('<bad>')) 'html has no raw tag'
+    $escaped = [char]38 + 'lt;bad' + [char]38 + 'gt;'
+    Assert-True ($html.Contains($escaped)) 'html escapes markup'
+    Assert-True (-not $html.Contains($marked)) 'html has no raw tag'
     $card = Format-DynamoJobCard -Session $logged -Job $logged.jobs[0] -Catalog $catalog
     Assert-True ($card.Contains('手動模式')) 'card manual'
     Assert-True ($card.Contains('自己按執行')) 'card run by hand'
@@ -284,7 +288,8 @@ function Invoke-DynamoQueueTestSuite {
   }
 
   Test-Case 'written is stored only after confirmation and an open job' {
-    $writePlan = Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"assign-worksets","inputs":{"directory":"C:/Models/sample-batch","run":false}},{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":true}}]}'
+    $writeJson = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"assign-worksets","inputs":{"directory":"C:/Models/sample-batch","run":false}},{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":true}}]}'
+    $writePlan = Resolve-DynamoTaskQueue -Catalog $catalog -Config $writeJson
     $writeSession = New-DynamoQueueSession -Plan $writePlan -SessionId 'sample-batch_20261111_070000' -CreatedAt '2026-11-11T07:00:00'
     Assert-Throws { Set-DynamoQueueJobResult -Session $writeSession -Index 2 -Status 'dry-run' } '請先開啟'
     Set-DynamoQueueJobOpened -Session $writeSession -Index 1 -StartedAt '2026-11-11T07:01:00' | Out-Null
@@ -311,7 +316,8 @@ function Invoke-DynamoQueueTestSuite {
     $logged.jobs[0].graphExecutedByLauncher = $true
     Assert-Throws { Export-DynamoQueueSession -Session $logged -OutputDirectory (Join-Path $work 'bad') } '不會執行'
     $badPath = Join-Path $work 'bad-log.json'
-    [System.IO.File]::WriteAllText($badPath, '{"version":1,"sessionId":"x","sessionName":"x","hostProject":"C:/Models/sample-host.rvt","confirmWrite":false,"createdAt":"2026-11-11T08:00:00","updatedAt":"2026-11-11T08:00:00","jobs":[{"index":1,"toolId":"fill-scada-params","toolName":"t","dyn":"a.dyn","status":"planned","run":false,"inputs":{},"inputFiles":[],"startedAt":null,"endedAt":null,"counts":{"files":null,"changed":null,"skipped":null,"failed":null},"errors":[],"manualMode":true,"graphExecutedByLauncher":true,"note":"x"}]}', (New-Object System.Text.UTF8Encoding $false))
+    $badJson = '{"version":1,"sessionId":"x","sessionName":"x","hostProject":"C:/Models/sample-host.rvt","confirmWrite":false,"createdAt":"2026-11-11T08:00:00","updatedAt":"2026-11-11T08:00:00","jobs":[{"index":1,"toolId":"fill-scada-params","toolName":"t","dyn":"a.dyn","status":"planned","run":false,"inputs":{},"inputFiles":[],"startedAt":null,"endedAt":null,"counts":{"files":null,"changed":null,"skipped":null,"failed":null},"errors":[],"manualMode":true,"graphExecutedByLauncher":true,"note":"x"}]}'
+    [System.IO.File]::WriteAllText($badPath, $badJson, (New-Object System.Text.UTF8Encoding $false))
     Assert-Throws { Import-DynamoQueueSession -Path $badPath } '不會執行'
   }
 
@@ -378,7 +384,8 @@ function Invoke-DynamoQueueTestSuite {
   }
 
   Test-Case 'job card for a confirmed write tells the operator to set Run True' {
-    $writePlan = Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"sessionName":"sample-batch","jobs":[{"toolId":"excel-sync","inputs":{"mode":"import","workbook":"C:/Models/sample-parameters.xlsx","run":true}}]}'
+    $cardJson = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"sessionName":"sample-batch","jobs":[{"toolId":"excel-sync","inputs":{"mode":"import","workbook":"C:/Models/sample-parameters.xlsx","run":true}}]}'
+    $writePlan = Resolve-DynamoTaskQueue -Catalog $catalog -Config $cardJson
     $writeSession = New-DynamoQueueSession -Plan $writePlan -SessionId 'sample-batch_20261111_090000' -CreatedAt '2026-11-11T09:00:00'
     $card = Format-DynamoJobCard -Session $writeSession -Job $writeSession.jobs[0] -Catalog $catalog
     Assert-True ($card.Contains('Run 改成 True')) 'write card'
