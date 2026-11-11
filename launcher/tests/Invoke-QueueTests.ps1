@@ -105,32 +105,39 @@ function Invoke-DynamoQueueTestSuite {
   }
 
   Test-Case 'write without confirmation is rejected' {
-    Assert-Throws {
-      Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":false,"jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":true}}]}'
-    } 'confirmWrite'
+    $json = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":false,"jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":true}}]}'
+    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $catalog -Config $json } 'confirmWrite'
   }
 
   Test-Case 'confirmed write stays true' {
-    $resolved = Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":true}}]}'
+    $json = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":true}}]}'
+    $resolved = Resolve-DynamoTaskQueue -Catalog $catalog -Config $json
     Assert-True $resolved.jobs[0].run 'confirmed run'
     Assert-True $resolved.confirmWrite 'confirm flag'
   }
 
   Test-Case 'string false is not a boolean' {
-    Assert-Throws {
-      Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":"false"}}]}'
-    } '布林'
+    $json = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":"false"}}]}'
+    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $catalog -Config $json } '布林'
   }
 
   Test-Case 'unknown tool, unknown input, missing input, bad host, and bad version' {
-    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"missing-tool","inputs":{}}]}' } '未知的工具'
-    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","extra":"x"}}]}' } '未知的輸入'
-    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $catalog -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"fill-scada-params","inputs":{}}]}' } '缺少必填輸入'
-    Assert-Throws { Read-DynamoTaskConfig -Json '{"version":1,"hostProject":"C:/Models/sample.rte","jobs":[{"toolId":"fill-scada-params"}]}' } '.rvt'
-    Assert-Throws { Read-DynamoTaskConfig -Json '{"version":2,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"fill-scada-params"}]}' } '版本'
-    Assert-Throws { Read-DynamoTaskConfig -Json '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":"true","jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/x"}}]}' } 'confirmWrite'
-    Assert-Throws { Read-DynamoTaskConfig -Json '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[]}' } '至少要有一個工作'
-    Assert-Throws { Read-DynamoTaskConfig -Json '{' } '不是合法的 JSON'
+    $unknownTool = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"missing-tool","inputs":{}}]}'
+    $unknownInput = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","extra":"x"}}]}'
+    $missingInput = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"fill-scada-params","inputs":{}}]}'
+    $templateHost = '{"version":1,"hostProject":"C:/Models/sample.rte","jobs":[{"toolId":"fill-scada-params"}]}'
+    $badVersion = '{"version":2,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"fill-scada-params"}]}'
+    $badConfirm = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":"true","jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/x"}}]}'
+    $emptyJobs = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[]}'
+    $broken = '{'
+    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $catalog -Config $unknownTool } '未知的工具'
+    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $catalog -Config $unknownInput } '未知的輸入'
+    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $catalog -Config $missingInput } '缺少必填輸入'
+    Assert-Throws { Read-DynamoTaskConfig -Json $templateHost } '.rvt'
+    Assert-Throws { Read-DynamoTaskConfig -Json $badVersion } '版本'
+    Assert-Throws { Read-DynamoTaskConfig -Json $badConfirm } 'confirmWrite'
+    Assert-Throws { Read-DynamoTaskConfig -Json $emptyJobs } '至少要有一個工作'
+    Assert-Throws { Read-DynamoTaskConfig -Json $broken } '不是合法的 JSON'
   }
 
   Test-Case 'duplicate tools keep the listed order' {
@@ -167,11 +174,11 @@ function Invoke-DynamoQueueTestSuite {
     $legacy = Read-DynamoToolboxCatalog -Json '{"tools":[{"id":"legacy-tool","name":"Legacy","dyn":"legacy/Legacy.dyn"}]}'
     Assert-Equal $legacy.Length 1 'legacy count'
     Assert-True (-not $legacy[0].SupportsDryRun) 'legacy dry-run'
-    $resolved = Resolve-DynamoTaskQueue -Catalog $legacy -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"legacy-tool","inputs":{}}]}'
+    $legacyJob = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"legacy-tool","inputs":{}}]}'
+    $legacyRun = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"legacy-tool","inputs":{"run":false}}]}'
+    $resolved = Resolve-DynamoTaskQueue -Catalog $legacy -Config $legacyJob
     Assert-True (-not $resolved.jobs[0].run) 'legacy run'
-    Assert-Throws {
-      Resolve-DynamoTaskQueue -Catalog $legacy -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"legacy-tool","inputs":{"run":false}}]}'
-    } '未知的輸入'
+    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $legacy -Config $legacyRun } '未知的輸入'
   }
 
   Test-Case 'future inspector and DWG importer follow the contract' {
@@ -186,32 +193,31 @@ function Invoke-DynamoQueueTestSuite {
   ]}
 ]}
 '@
-    $readOnly = Resolve-DynamoTaskQueue -Catalog $future -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"model-inspector","inputs":{}}]}'
+    $inspectorJob = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"model-inspector","inputs":{}}]}'
+    $dwgDry = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"dwg-import","inputs":{"dwg":"C:/Models/sample.dwg"}}]}'
+    $dwgWrite = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"dwg-import","inputs":{"dwg":"C:/Models/sample.dwg","run":true}}]}'
+    $dwgFraction = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"dwg-import","inputs":{"dwg":"C:/Models/sample.dwg","copies":1.5}}]}'
+    $dwgConfirmed = '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"dwg-import","inputs":{"dwg":"C:/Models/sample.dwg","run":true}}]}'
+    $readOnly = Resolve-DynamoTaskQueue -Catalog $future -Config $inspectorJob
     Assert-Equal $readOnly.jobs[0].inputs.scope 'all' 'inspector default'
     Assert-True (-not $readOnly.jobs[0].run) 'inspector does not write'
-    $dry = Resolve-DynamoTaskQueue -Catalog $future -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"dwg-import","inputs":{"dwg":"C:/Models/sample.dwg"}}]}'
+    $dry = Resolve-DynamoTaskQueue -Catalog $future -Config $dwgDry
     Assert-True (-not $dry.jobs[0].run) 'dwg dry run'
     Assert-Equal ([int64]$dry.jobs[0].inputs.copies) 1 'integer default'
     if ([Math]::Abs(([double]$dry.jobs[0].inputs.scale) - 1.5) -gt 0.0001) {
       throw "scale actual [$($dry.jobs[0].inputs.scale)]"
     }
-    Assert-Throws {
-      Resolve-DynamoTaskQueue -Catalog $future -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","jobs":[{"toolId":"dwg-import","inputs":{"dwg":"C:/Models/sample.dwg","run":true}}]}'
-    } 'confirmWrite'
-    Assert-Throws {
-      Resolve-DynamoTaskQueue -Catalog $future -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"dwg-import","inputs":{"dwg":"C:/Models/sample.dwg","copies":1.5}}]}'
-    } '整數'
-    $write = Resolve-DynamoTaskQueue -Catalog $future -Config '{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"dwg-import","inputs":{"dwg":"C:/Models/sample.dwg","run":true}}]}'
+    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $future -Config $dwgWrite } 'confirmWrite'
+    Assert-Throws { Resolve-DynamoTaskQueue -Catalog $future -Config $dwgFraction } '整數'
+    $write = Resolve-DynamoTaskQueue -Catalog $future -Config $dwgConfirmed
     Assert-True $write.jobs[0].run 'dwg write'
   }
 
   Test-Case 'catalog rejects a dry-run default of true and an absolute dyn path' {
-    Assert-Throws {
-      Read-DynamoToolboxCatalog -Json '{"tools":[{"id":"bad-tool","name":"Bad","dyn":"bad/Bad.dyn","supportsDryRun":true,"dryRunInput":"run","inputs":[{"name":"run","type":"boolean","label":"寫入","required":false,"default":true,"writesModel":true}]}]}'
-    } '預設必須是 false'
-    Assert-Throws {
-      Read-DynamoToolboxCatalog -Json '{"tools":[{"id":"bad-tool","name":"Bad","dyn":"C:/Temp/Bad.dyn"}]}'
-    } '相對路徑'
+    $badDefault = '{"tools":[{"id":"bad-tool","name":"Bad","dyn":"bad/Bad.dyn","supportsDryRun":true,"dryRunInput":"run","inputs":[{"name":"run","type":"boolean","label":"寫入","required":false,"default":true,"writesModel":true}]}]}'
+    $absoluteDyn = '{"tools":[{"id":"bad-tool","name":"Bad","dyn":"C:/Temp/Bad.dyn"}]}'
+    Assert-Throws { Read-DynamoToolboxCatalog -Json $badDefault } '預設必須是 false'
+    Assert-Throws { Read-DynamoToolboxCatalog -Json $absoluteDyn } '相對路徑'
   }
 
   $session = New-DynamoQueueSession -Plan $plan -SessionId 'sample-batch_20261111_060000' -CreatedAt '2026-11-11T06:00:00'
