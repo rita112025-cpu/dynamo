@@ -1,0 +1,1 @@
+{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"sessionName":"sample-batch","jobs":[{"toolId":"excel-sync","inputs":{"mode":"import","workbook":"C:/Models/sample-parameters.xlsx","run":true}}]}

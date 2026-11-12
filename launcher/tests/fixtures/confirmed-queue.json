@@ -1,0 +1,1 @@
+{"version":1,"hostProject":"C:/Models/sample-host.rvt","confirmWrite":true,"jobs":[{"toolId":"assign-worksets","inputs":{"directory":"C:/Models/sample-batch","run":false}},{"toolId":"fill-scada-params","inputs":{"directory":"C:/Models/sample-batch","run":true}}]}

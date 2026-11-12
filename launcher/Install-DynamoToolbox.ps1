@@ -29,7 +29,7 @@ function Get-DynamoToolboxShortcutSpec {
     MenuPath         = $menuPath
     WorkingDirectory = (Get-DynamoToolboxRoot)
     Arguments        = '-NoProfile -ExecutionPolicy Bypass -STA -File "{0}"' -f $menuPath
-    Description      = 'Open an existing Revit project and one Dynamo tool in manual mode. Close Revit 2025 first.'
+    Description      = 'Open an existing Revit project and a Dynamo tool in manual mode, or prepare a batch queue. Close Revit 2025 first.'
     Name             = 'Dynamo Toolbox.lnk'
   }
 }
@@ -40,7 +40,7 @@ function Install-DynamoToolboxShortcut {
     throw 'Windows PowerShell 5.1 (powershell.exe) was not found. The shortcut is not created for PowerShell 7.'
   }
 
-  $catalog = @(Get-DynamoToolboxCatalog)
+  $catalog = Get-DynamoToolboxCatalog
   foreach ($tool in $catalog) {
     $dyn = Join-Path $spec.WorkingDirectory ($tool.Dyn -replace '/', '\')
     if (-not (Test-Path -LiteralPath $dyn)) { throw ".dyn not found: $dyn" }

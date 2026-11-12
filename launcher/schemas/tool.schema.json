@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dynamo-toolbox/tool.schema.json",
+  "title": "Dynamo toolbox tools.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tools"],
+  "properties": {
+    "_note": { "type": "string" },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/tool" }
+    }
+  },
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "dyn"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "dyn": {
+          "type": "string",
+          "description": "Repository-relative path ending in .dyn. No drive letter, no .. segment."
+        },
+        "supportsDryRun": { "type": "boolean", "default": false },
+        "dryRunInput": { "type": "string" },
+        "inputs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/input" }
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "label"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+        "type": {
+          "enum": ["string", "boolean", "integer", "number", "directory", "file", "string-list"]
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean", "default": false },
+        "default": {},
+        "enum": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "writesModel": { "type": "boolean", "default": false },
+        "help": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "sessionName": "sample-batch",
+  "hostProject": "C:/Models/sample-host.rvt",
+  "confirmWrite": false,
+  "jobs": [
+    {
+      "toolId": "batch-scada-setup",
+      "inputs": {
+        "directory": "C:/Models/sample-batch",
+        "templateNames": ["SampleTemplate"],
+        "value": "SAMPLE",
+        "run": false
+      }
+    },
+    {
+      "toolId": "fill-scada-params",
+      "inputs": {
+        "directory": "C:/Models/sample-batch",
+        "value": "SAMPLE",
+        "run": false
+      }
+    },
+    {
+      "toolId": "copy-view-templates",
+      "inputs": {
+        "directory": "C:/Models/sample-batch",
+        "templateNames": ["SampleTemplate"],
+        "run": false
+      }
+    },
+    {
+      "toolId": "assign-worksets",
+      "inputs": {
+        "directory": "C:/Models/sample-batch",
+        "rules": [],
+        "run": false
+      }
+    },
+    {
+      "toolId": "param-tools",
+      "inputs": {
+        "directory": "C:/Models/sample-batch",
+        "categories": [],
+        "mode": "check",
+        "spec": ["備註"],
+        "run": false
+      }
+    },
+    {
+      "toolId": "excel-sync",
+      "inputs": {
+        "mode": "export",
+        "workbook": "C:/Models/sample-parameters.xlsx",
+        "categories": [],
+        "parameters": [],
+        "run": false
+      }
+    }
+  ]
+}

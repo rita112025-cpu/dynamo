@@ -1,0 +1,6 @@
+copy-view-templates|批次複製視圖樣板/BatchCopyViewTemplates.dyn
+fill-scada-params|批次填參數/BatchFillScadaParams.dyn
+assign-worksets|批次工作集/BatchWorksets.dyn
+param-tools|批次參數工具/BatchParamTools.dyn
+excel-sync|Excel參數同步/ExcelRevitSync.dyn
+batch-scada-setup|批次SCADA設定/BatchScadaSetup.dyn

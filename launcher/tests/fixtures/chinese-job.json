@@ -1,0 +1,1 @@
+{"version":1,"sessionName":"範例批次","hostProject":"C:/模型/範例宿主.rvt","confirmWrite":false,"jobs":[{"toolId":"fill-scada-params","inputs":{"directory":"C:/模型/範例批次","value":"SAMPLE","run":false}}]}

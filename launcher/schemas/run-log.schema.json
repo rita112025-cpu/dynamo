@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dynamo-toolbox/run-log.schema.json",
+  "title": "Dynamo toolbox run log",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "sessionId", "sessionName", "hostProject", "confirmWrite", "createdAt", "updatedAt", "jobs"],
+  "properties": {
+    "version": { "const": 1 },
+    "sessionId": { "type": "string" },
+    "sessionName": { "type": "string" },
+    "hostProject": { "type": "string" },
+    "confirmWrite": { "type": "boolean" },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "index", "toolId", "toolName", "dyn", "status", "run", "inputs", "inputFiles",
+          "startedAt", "endedAt", "counts", "errors", "manualMode", "graphExecutedByLauncher", "note"
+        ],
+        "properties": {
+          "index": { "type": "integer", "minimum": 1 },
+          "toolId": { "type": "string" },
+          "toolName": { "type": "string" },
+          "dyn": { "type": "string" },
+          "status": {
+            "enum": ["planned", "opened-manual", "dry-run", "written", "failed", "skipped"]
+          },
+          "run": { "type": "boolean" },
+          "inputs": { "type": "object" },
+          "inputFiles": { "type": "array", "items": { "type": "string" } },
+          "startedAt": { "type": ["string", "null"] },
+          "endedAt": { "type": ["string", "null"] },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "files": { "type": ["integer", "null"], "minimum": 0 },
+              "changed": { "type": ["integer", "null"], "minimum": 0 },
+              "skipped": { "type": ["integer", "null"], "minimum": 0 },
+              "failed": { "type": ["integer", "null"], "minimum": 0 }
+            }
+          },
+          "errors": { "type": "array", "items": { "type": "string" } },
+          "manualMode": { "const": true },
+          "graphExecutedByLauncher": { "const": false },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

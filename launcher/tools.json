@@ -1,11 +1,245 @@
 {
-  "_note": "Paths are relative to the repository root. Do not put absolute user paths here.",
+  "_note": "Paths are relative to the repository root. Do not put absolute user paths here. Optional contract fields are documented in launcher/README.md.",
   "tools": [
-    { "id": "copy-view-templates", "name": "批次複製視圖樣板",   "dyn": "批次複製視圖樣板/BatchCopyViewTemplates.dyn" },
-    { "id": "fill-scada-params",   "name": "批次填寫 SCADA 參數", "dyn": "批次填參數/BatchFillScadaParams.dyn" },
-    { "id": "assign-worksets",     "name": "批次分配工作集",     "dyn": "批次工作集/BatchWorksets.dyn" },
-    { "id": "param-tools",         "name": "Revit 參數工具",     "dyn": "批次參數工具/BatchParamTools.dyn" },
-    { "id": "excel-sync",          "name": "Excel／Revit 同步",  "dyn": "Excel參數同步/ExcelRevitSync.dyn" },
-    { "id": "batch-scada-setup",   "name": "批次 SCADA 設定",    "dyn": "批次SCADA設定/BatchScadaSetup.dyn" }
+    {
+      "id": "copy-view-templates",
+      "name": "批次複製視圖樣板",
+      "dyn": "批次複製視圖樣板/BatchCopyViewTemplates.dyn",
+      "supportsDryRun": true,
+      "dryRunInput": "run",
+      "inputs": [
+        {
+          "name": "directory",
+          "type": "directory",
+          "label": "目標資料夾",
+          "required": true,
+          "help": "要處理的 .rvt 所在資料夾。宿主專案本身不會被改。"
+        },
+        {
+          "name": "templateNames",
+          "type": "string-list",
+          "label": "視圖樣板名稱",
+          "required": false,
+          "default": ["SCADA"],
+          "help": "留空清單表示複製來源檔裡的全部視圖樣板。"
+        },
+        {
+          "name": "run",
+          "type": "boolean",
+          "label": "寫入（False = 試跑）",
+          "required": false,
+          "default": false,
+          "writesModel": true,
+          "help": "False 只列出預計複製的樣板。True 會寫入並存檔。"
+        }
+      ]
+    },
+    {
+      "id": "fill-scada-params",
+      "name": "批次填寫 SCADA 參數",
+      "dyn": "批次填參數/BatchFillScadaParams.dyn",
+      "supportsDryRun": true,
+      "dryRunInput": "run",
+      "inputs": [
+        {
+          "name": "directory",
+          "type": "directory",
+          "label": "目標資料夾",
+          "required": true,
+          "help": "要填參數的 .rvt 所在資料夾。"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "label": "寫入文字",
+          "required": false,
+          "default": "SCADA",
+          "help": "空白參數會填成這個文字。已有其他內容的值會保留。"
+        },
+        {
+          "name": "run",
+          "type": "boolean",
+          "label": "寫入（False = 試跑）",
+          "required": false,
+          "default": false,
+          "writesModel": true,
+          "help": "False 只計數。True 才寫入並存檔。"
+        }
+      ]
+    },
+    {
+      "id": "assign-worksets",
+      "name": "批次分配工作集",
+      "dyn": "批次工作集/BatchWorksets.dyn",
+      "supportsDryRun": true,
+      "dryRunInput": "run",
+      "inputs": [
+        {
+          "name": "directory",
+          "type": "directory",
+          "label": "目標資料夾",
+          "required": true,
+          "help": "要分工作集的 .rvt 所在資料夾。非工作共享檔會被略過。"
+        },
+        {
+          "name": "rules",
+          "type": "string-list",
+          "label": "工作集規則",
+          "required": false,
+          "default": [],
+          "help": "空清單使用圖形內建規則。一條規則一行：類別 | 參數=值 -> 工作集。"
+        },
+        {
+          "name": "run",
+          "type": "boolean",
+          "label": "寫入（False = 試跑）",
+          "required": false,
+          "default": false,
+          "writesModel": true,
+          "help": "False 以分離方式開啟並只計數。True 才同步中央檔。"
+        }
+      ]
+    },
+    {
+      "id": "param-tools",
+      "name": "Revit 參數工具",
+      "dyn": "批次參數工具/BatchParamTools.dyn",
+      "supportsDryRun": true,
+      "dryRunInput": "run",
+      "inputs": [
+        {
+          "name": "directory",
+          "type": "directory",
+          "label": "目標資料夾",
+          "required": true,
+          "help": "要檢查或寫入參數的 .rvt 所在資料夾。"
+        },
+        {
+          "name": "categories",
+          "type": "string-list",
+          "label": "類別",
+          "required": false,
+          "default": [],
+          "help": "BuiltInCategory 名稱。空清單使用圖形內建的七個類別。"
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "label": "模式",
+          "required": false,
+          "default": "check",
+          "enum": ["check", "compose", "space"],
+          "help": "check 永遠唯讀。compose 與 space 要等寫入開關為 True 才存檔。"
+        },
+        {
+          "name": "spec",
+          "type": "string-list",
+          "label": "規則",
+          "required": false,
+          "default": ["備註", "服務類型"],
+          "help": "依模式填。check 可用「參數名」或「參數名~正規表達式」。"
+        },
+        {
+          "name": "run",
+          "type": "boolean",
+          "label": "寫入（False = 試跑）",
+          "required": false,
+          "default": false,
+          "writesModel": true,
+          "help": "check 模式不會寫入模型。compose 與 space 在 True 時才存檔。"
+        }
+      ]
+    },
+    {
+      "id": "excel-sync",
+      "name": "Excel／Revit 同步",
+      "dyn": "Excel參數同步/ExcelRevitSync.dyn",
+      "supportsDryRun": true,
+      "dryRunInput": "run",
+      "inputs": [
+        {
+          "name": "mode",
+          "type": "string",
+          "label": "模式",
+          "required": false,
+          "default": "export",
+          "enum": ["export", "import"],
+          "help": "export 寫出 xlsx。import 才可能改模型，而且要寫入開關為 True。"
+        },
+        {
+          "name": "workbook",
+          "type": "file",
+          "label": "Excel 檔",
+          "required": true,
+          "help": "xlsx 路徑。寫出時這個檔案不能開在 Excel 裡。"
+        },
+        {
+          "name": "categories",
+          "type": "string-list",
+          "label": "類別",
+          "required": false,
+          "default": [],
+          "help": "只在匯出時使用。空清單使用圖形內建的七個類別。"
+        },
+        {
+          "name": "parameters",
+          "type": "string-list",
+          "label": "參數名稱",
+          "required": false,
+          "default": [],
+          "help": "空清單：匯出全部可寫文字／數字／是否參數；匯入則寫回所有非固定欄。"
+        },
+        {
+          "name": "run",
+          "type": "boolean",
+          "label": "寫入（False = 試跑）",
+          "required": false,
+          "default": false,
+          "writesModel": true,
+          "help": "只影響 import。False 不改模型。佇列仍把 True 當成寫入，必須先確認。"
+        }
+      ]
+    },
+    {
+      "id": "batch-scada-setup",
+      "name": "批次 SCADA 設定",
+      "dyn": "批次SCADA設定/BatchScadaSetup.dyn",
+      "supportsDryRun": true,
+      "dryRunInput": "run",
+      "inputs": [
+        {
+          "name": "directory",
+          "type": "directory",
+          "label": "目標資料夾",
+          "required": true,
+          "help": "要套用樣板並填參數的 .rvt 所在資料夾。"
+        },
+        {
+          "name": "templateNames",
+          "type": "string-list",
+          "label": "視圖樣板名稱",
+          "required": false,
+          "default": ["SCADA"],
+          "help": "從目前開啟的宿主檔複製這些視圖樣板。"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "label": "寫入文字",
+          "required": false,
+          "default": "SCADA",
+          "help": "服務類型與備註要填入的文字。"
+        },
+        {
+          "name": "run",
+          "type": "boolean",
+          "label": "寫入（False = 試跑）",
+          "required": false,
+          "default": false,
+          "writesModel": true,
+          "help": "False 不存檔。True 每個目標檔只開啟並存檔一次。"
+        }
+      ]
+    }
   ]
 }

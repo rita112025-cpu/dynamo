@@ -1,0 +1,1 @@
+{"tools":[{"id":"bad-tool","name":"Bad","dyn":"bad/Bad.dyn","supportsDryRun":true,"dryRunInput":"run","inputs":[{"name":"run","type":"boolean","label":"Write","required":false,"default":true,"writesModel":true}]}]}
