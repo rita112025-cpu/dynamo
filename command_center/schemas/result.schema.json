@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bbcc/result/1.0",
+  "title": "BIM Batch Command Center result 1.0",
+  "description": "Validated by bbcc.schema_check (subset). Status consistency rules are in bbcc.results.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["result_version", "task_id", "task_version", "run_id", "run_nonce", "input_fingerprint",
+               "mode", "status", "written_by", "started_at", "finished_at", "input_files", "output_files",
+               "items_processed", "items_modified", "errors", "warnings", "skip_reason", "failure_class",
+               "verified_by_controller", "halted_run"],
+  "properties": {
+    "result_version": {"const": "1.0"},
+    "task_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"},
+    "task_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "run_id": {"type": "string", "pattern": "^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}$"},
+    "run_nonce": {"type": ["string", "null"], "pattern": "^[0-9a-f]{32}$"},
+    "input_fingerprint": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "mode": {"enum": ["dry_run", "write"]},
+    "status": {"enum": ["success", "failed", "skipped", "interrupted"]},
+    "written_by": {"enum": ["task", "controller"]},
+    "started_at": {"type": ["string", "null"], "$comment": "format checked in bbcc.results"},
+    "finished_at": {"type": "string"},
+    "input_files": {"type": "array", "items": {"$ref": "#/$defs/file_ref"}},
+    "output_files": {"type": "array", "items": {"$ref": "#/$defs/output_ref"}},
+    "items_processed": {"type": "integer", "minimum": 0},
+    "items_modified": {"type": "integer", "minimum": 0},
+    "items_planned": {"type": "integer", "minimum": 0},
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
+    "errors": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "skip_reason": {"enum": [null, "preflight_failed", "backup_failed", "workcopy_failed", "lock_conflict",
+                             "lock_stale_suspected", "dependency_not_selected", "dependency_failed",
+                             "dependency_skipped", "duplicate_run", "run_halted", "not_applicable"]},
+    "failure_class": {"enum": [null, "task_reported", "verification", "controller_error"]},
+    "verified_by_controller": {"type": "boolean"},
+    "halted_run": {"type": "boolean"},
+    "process": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "pid": {"type": ["integer", "null"]},
+        "exit_code": {"type": ["integer", "null"]},
+        "exit_seen_at": {"type": ["string", "null"]}
+      }
+    },
+    "evidence": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "file_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "role": {"type": "string"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": ["integer", "null"], "minimum": 0},
+        "mtime": {"type": ["string", "null"]}
+      }
+    },
+    "output_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "role": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status"],
+      "properties": {
+        "path": {"type": "string"},
+        "status": {"enum": ["success", "failed", "skipped"]},
+        "modified": {"type": "boolean"},
+        "counts": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "message": {"type": "string"}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+        "message": {"type": "string"},
+        "path": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

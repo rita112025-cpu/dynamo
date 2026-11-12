@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bbcc/task_contract/1.0",
+  "title": "BIM Batch Command Center task contract 1.0",
+  "description": "Validated by bbcc.schema_check (subset). Semantic rules are in bbcc.contracts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "task_id", "task_version", "name", "application", "entry",
+               "inputs", "outputs", "dependencies", "execution_mode", "requires_backup", "verification"],
+  "properties": {
+    "contract_version": {"const": "1.0"},
+    "task_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"},
+    "task_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "name": {"type": "string", "minLength": 1},
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "version"],
+      "properties": {
+        "host": {"enum": ["revit", "autocad-mep", "python"]},
+        "version": {"type": "string", "minLength": 1},
+        "engine": {"enum": ["dynamo-cpython3"]},
+        "engine_version": {"type": "string"}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path"],
+      "properties": {
+        "type": {"enum": ["dyn", "python-module"]},
+        "path": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "inputs": {"type": "array", "items": {"$ref": "#/$defs/input"}},
+    "outputs": {"type": "array", "items": {"$ref": "#/$defs/output"}},
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requires", "after", "conflicts_with"],
+      "properties": {
+        "requires": {"type": "array", "items": {"$ref": "#/$defs/task_ref"}},
+        "after": {"type": "array", "items": {"$ref": "#/$defs/task_ref"}},
+        "conflicts_with": {"type": "array", "items": {"$ref": "#/$defs/task_ref"}}
+      }
+    },
+    "execution_mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "batch", "supports_dry_run", "default_mode", "modifies_models",
+                   "write_requires_approval", "filename_guard", "dry_run_side_effects", "auto_run"],
+      "properties": {
+        "scope": {"enum": ["folder", "current_document", "none"]},
+        "batch": {"type": "boolean"},
+        "supports_dry_run": {"type": "boolean"},
+        "default_mode": {"const": "dry_run"},
+        "modifies_models": {"type": "boolean"},
+        "write_requires_approval": {"type": "boolean"},
+        "filename_guard": {"type": ["string", "null"]},
+        "dry_run_side_effects": {"type": "array", "items": {"type": "string"}},
+        "auto_run": {"const": false}
+      }
+    },
+    "requires_backup": {"type": "boolean"},
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit_tests", "real_run", "result_contract"],
+      "properties": {
+        "unit_tests": {"type": "array", "items": {"type": "string"}},
+        "real_run": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "evidence"],
+          "properties": {
+            "status": {"enum": ["unverified", "documented", "verified"]},
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["date", "source", "note"],
+                "properties": {
+                  "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+                  "source": {"type": "string", "minLength": 1},
+                  "note": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "result_contract": {"enum": ["none", "v1"]}
+      }
+    }
+  },
+  "$defs": {
+    "task_ref": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"},
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "role", "required"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+        "type": {"enum": ["dir", "file", "file_list", "string", "string_list", "bool", "enum"]},
+        "role": {"enum": ["target_models", "source_model", "data_file", "option", "write_switch"]},
+        "required": {"type": "boolean"},
+        "default": {},
+        "choices": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "dyn_index": {"type": "integer", "minimum": 0},
+        "file_pattern": {"type": "string", "minLength": 1},
+        "description": {"type": "string"}
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "location", "overwrite_policy"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["model", "report", "xlsx", "family", "log"]},
+        "location": {"enum": ["in_place", "staging"]},
+        "overwrite_policy": {"enum": ["never", "staging_only", "in_place_requires_approval"]}
+      }
+    }
+  }
+}
