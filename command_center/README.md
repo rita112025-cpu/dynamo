@@ -100,7 +100,9 @@ print(summary.status("t1"))
 ## 已知限制
 
 - 修正版只在 Linux 容器以 Python 3.11／3.12／3.13 執行過；Python 3.9.12 與 Windows 的修正版尚未重跑（只做了 3.9 語法檢查）。
-- PE-04（檔案符號連結）在沒有建立符號連結權限的 Windows 帳號（WinError 1314）會略過；PE-07 改用 junction 補上，junction 部分未在 Windows 實測。
+- **Windows 一般帳號下的略過**：建立符號連結需要權限（WinError 1314）。PE-04（檔案符號連結）在這種帳號會略過；目錄連結的逃逸由 PE-07 涵蓋，PE-07、RJ-01、RJ-02 沒有符號連結權限時改用 junction（`tests/helpers.py` 的 `dir_link()`），所以三者在一般帳號下實際執行。檔案符號連結沒有對應的 junction，維持略過。
+- **測試結果必須註明平台**：Linux 容器的 107 項為 0 略過；Windows 11（Python 3.9.12 embed 與 3.12.10，sessionB 對 r1 的回報）為 103 通過、1 錯誤（PR-02，已修）、3 略過（PE-04、RJ-01、RJ-02；RJ-01／RJ-02 已改用 junction）。「略過 0」只適用 Linux。
+- 備份檔會被設為唯讀。Windows 不允許刪除唯讀檔，手動清理執行目錄前需先清除唯讀屬性（測試用 `force_remove()`）。
 - Windows 專屬行為以注入方式測試：`GetDriveTypeW`、`os.replace` 遇到被占用檔案的錯誤碼、junction、PID 判斷（`OpenProcess`）。實際 Windows 行為未驗證。
 - 同步資料夾判斷是依名稱的啟發式，無法辨識所有同步軟體。
 - 備份檔會設為唯讀；清理執行目錄需由使用者處理，控制器不自動刪除。

@@ -5,6 +5,7 @@ The "models" are small byte files named *.rvt. They are not Revit files.
 import copy
 import json
 import os
+import stat
 import tempfile
 import unittest
 
@@ -39,6 +40,35 @@ def contract_dict(task_id="t1", requires=(), conflicts=()):
         "verification": {"unit_tests": [], "real_run": {"status": "unverified", "evidence": []},
                          "result_contract": "v1"},
     }
+
+
+def force_remove(path):
+    """Delete a file even if it is read-only. Backups are written read-only, and Windows
+    refuses to delete a read-only file (WinError 5) where Linux allows it."""
+    os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+    os.remove(path)
+
+
+def dir_link(test, target, link):
+    """Create a directory link at `link` pointing to `target`.
+
+    Uses a symbolic link; on Windows without the symlink privilege (WinError 1314) it falls
+    back to a junction, which needs no administrator rights. Skips the test when neither is
+    available. `os.path.realpath` resolves both kinds of link.
+    """
+    try:
+        os.symlink(target, link, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError):
+        pass
+    if os.name == "nt":
+        try:
+            import _winapi
+            _winapi.CreateJunction(target, link)
+            return
+        except Exception as exc:
+            test.skipTest("cannot create a symlink or junction: %s" % exc)
+    test.skipTest("directory links are not available on this platform")
 
 
 def snapshot(folder):

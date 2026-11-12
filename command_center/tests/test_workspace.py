@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 
 from bbcc import atomic, workspace
-from tests.helpers import SandboxTest, snapshot
+from tests.helpers import SandboxTest, dir_link, snapshot
 
 
 class RunFolderTest(SandboxTest):
@@ -132,19 +132,13 @@ class RunsRootTest(unittest.TestCase):
 
 
 class RealPathTest(SandboxTest):
-    """RJ-01..02: the work root is also checked after resolving symbolic links."""
-
-    def link_or_skip(self, target, link):
-        try:
-            os.symlink(target, link, target_is_directory=True)
-        except (OSError, NotImplementedError) as exc:
-            self.skipTest("symbolic links not available on this platform: %s" % exc)
+    """RJ-01..02: the work root is also checked after resolving symbolic links / junctions."""
 
     def test_rj01_link_resolving_into_target_folder(self):
         inner = os.path.join(self.box.models, "inner")
         os.makedirs(inner)
         alias = os.path.join(self.box.root, "alias_root")
-        self.link_or_skip(inner, alias)
+        dir_link(self, inner, alias)
         with self.assertRaises(workspace.ConfigError) as ctx:
             workspace.check_runs_root(alias, {}, lambda p: None, [self.box.models])
         self.assertEqual(ctx.exception.code, "ROOT_INSIDE_TARGET")
@@ -153,7 +147,7 @@ class RealPathTest(SandboxTest):
         real = os.path.join(self.box.root, "Dropbox", "real")
         os.makedirs(real)
         alias = os.path.join(self.box.root, "alias")
-        self.link_or_skip(real, alias)
+        dir_link(self, real, alias)
         with self.assertRaises(workspace.ConfigError) as ctx:
             workspace.check_runs_root(os.path.join(alias, "bbcc"), {}, lambda p: None, [])
         self.assertEqual(ctx.exception.code, "ROOT_SYNC_FOLDER")

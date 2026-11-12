@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 from bbcc import atomic, controller, ledger, locks, results
-from tests.helpers import HOST, SandboxTest, override, snapshot
+from tests.helpers import HOST, SandboxTest, force_remove, override, snapshot
 
 OTHER_RUN = "20261111-000000-abcdef12"
 
@@ -362,7 +362,7 @@ class PromotionEvidenceTest(SandboxTest):
         os.chmod(changed["backup_path"], 0o644)
         with open(changed["backup_path"], "ab") as handle:
             handle.write(b"x")
-        os.remove(missing["backup_path"])
+        force_remove(missing["backup_path"])  # backups are read-only; Windows needs the flag cleared first
         found = self.reasons()
         self.assertIn("BACKUP_CHANGED:%s" % changed["rel"], found)
         self.assertIn("BACKUP_MISSING:%s" % missing["rel"], found)

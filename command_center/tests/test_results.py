@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 
 from bbcc import atomic, controller, results
-from tests.helpers import SandboxTest, override, valid_result
+from tests.helpers import SandboxTest, dir_link, override, valid_result
 
 
 class ResultContractTest(unittest.TestCase):
@@ -204,23 +204,6 @@ class PathEscapeTest(SandboxTest):
             inside = results.resolve_output_path("sub\\..\\out.rvt", root)
             self.assertEqual(inside, os.path.join(root, "out.rvt"))
 
-    def make_dir_link(self, target, link):
-        """Directory symlink; on Windows without symlink privilege (WinError 1314) a
-        junction, which needs no administrator rights."""
-        try:
-            os.symlink(target, link, target_is_directory=True)
-            return
-        except (OSError, NotImplementedError):
-            pass
-        if os.name == "nt":
-            try:
-                import _winapi
-                _winapi.CreateJunction(target, link)
-                return
-            except Exception as exc:
-                self.skipTest("cannot create a symlink or junction: %s" % exc)
-        self.skipTest("directory links are not available on this platform")
-
     def test_pe07_directory_link_or_junction_leaving_staging(self):
         outside = os.path.join(self.box.root, "outside_dir")
         os.makedirs(outside)
@@ -228,7 +211,7 @@ class PathEscapeTest(SandboxTest):
             handle.write(b"ok")
 
         def make_link(job):
-            self.make_dir_link(outside, os.path.join(job["staging_dir"], "linkdir"))
+            dir_link(self, outside, os.path.join(job["staging_dir"], "linkdir"))
 
         self.assertEscape(self.run_with_output("linkdir\\out.rvt", create=make_link))
 
