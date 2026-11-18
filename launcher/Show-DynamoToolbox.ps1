@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   Menu for the Dynamo tools listed in launcher/tools.json. Starts Revit 2025 only when it is not already running.
@@ -19,7 +19,7 @@
 #>
 $ErrorActionPreference = 'Stop'
 
-$script:RevitAlreadyRunningMessage = 'Revit 2025 is already running. Close Revit, then run this again. This launcher does not attach to an open Revit session.'
+$script:RevitAlreadyRunningMessage = 'Revit 2025 已在執行中。請先關閉 Revit 再重新開啟。此啟動器不會連接到已開啟的 Revit。'
 
 function Read-Utf8Text([string]$Path) {
   $utf8 = New-Object System.Text.UTF8Encoding $false
@@ -104,7 +104,7 @@ function Show-DynamoToolboxForm {
 
   $form = New-Object System.Windows.Forms.Form
   $script:toolboxForm = $form
-  $form.Text = 'Dynamo toolbox'
+  $form.Text = 'Dynamo 工具箱'
   $form.FormBorderStyle = 'FixedDialog'
   $form.MaximizeBox = $false
   $form.StartPosition = 'CenterScreen'
@@ -115,13 +115,13 @@ function Show-DynamoToolboxForm {
   $intro = New-Object System.Windows.Forms.Label
   $intro.Location = New-Object System.Drawing.Point(16, 12)
   $intro.Size = New-Object System.Drawing.Size(528, 52)
-  $intro.Text = 'Pick one tool and an existing .rvt. Revit 2025 must be closed. The graph loads in manual mode and does not run.'
+  $intro.Text = '選擇一個工具與一個既有的 .rvt。Revit 2025 必須先關閉。圖形會以手動模式載入，不會自動執行。'
   $form.Controls.Add($intro)
 
   $toolLabel = New-Object System.Windows.Forms.Label
   $toolLabel.Location = New-Object System.Drawing.Point(16, 72)
   $toolLabel.Size = New-Object System.Drawing.Size(528, 20)
-  $toolLabel.Text = 'Tool'
+  $toolLabel.Text = '工具'
   $form.Controls.Add($toolLabel)
 
   $script:toolList = New-Object System.Windows.Forms.ListBox
@@ -137,7 +137,7 @@ function Show-DynamoToolboxForm {
   $projectLabel = New-Object System.Windows.Forms.Label
   $projectLabel.Location = New-Object System.Drawing.Point(16, 276)
   $projectLabel.Size = New-Object System.Drawing.Size(528, 20)
-  $projectLabel.Text = 'Existing project (.rvt)'
+  $projectLabel.Text = '既有專案 (.rvt)'
   $form.Controls.Add($projectLabel)
 
   $script:projectBox = New-Object System.Windows.Forms.TextBox
@@ -148,11 +148,11 @@ function Show-DynamoToolboxForm {
   $browse = New-Object System.Windows.Forms.Button
   $browse.Location = New-Object System.Drawing.Point(424, 298)
   $browse.Size = New-Object System.Drawing.Size(120, 28)
-  $browse.Text = '&Browse...'
+  $browse.Text = '瀏覽(&B)...'
   $browse.Add_Click({
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
-    $dialog.Filter = 'Revit project (*.rvt)|*.rvt'
-    $dialog.Title = 'Select an existing Revit project'
+    $dialog.Filter = 'Revit 專案 (*.rvt)|*.rvt'
+    $dialog.Title = '選擇既有的 Revit 專案'
     $dialog.CheckFileExists = $true
     $dialog.Multiselect = $false
     if ($dialog.ShowDialog($script:toolboxForm) -eq [System.Windows.Forms.DialogResult]::OK) {
@@ -164,34 +164,34 @@ function Show-DynamoToolboxForm {
   $hint = New-Object System.Windows.Forms.Label
   $hint.Location = New-Object System.Drawing.Point(16, 340)
   $hint.Size = New-Object System.Drawing.Size(528, 48)
-  $hint.Text = 'Templates (.rte) are not opened. If Revit 2025 is already running, close it before Launch.'
+  $hint.Text = '不會開啟樣板 (.rte)。若 Revit 2025 已在執行，請先關閉再按「啟動」。'
   $form.Controls.Add($hint)
 
   $launch = New-Object System.Windows.Forms.Button
   $launch.Location = New-Object System.Drawing.Point(16, 408)
   $launch.Size = New-Object System.Drawing.Size(140, 32)
-  $launch.Text = '&Launch'
+  $launch.Text = '啟動(&L)'
   $launch.Add_Click({
     $index = $script:toolList.SelectedIndex
     if ($index -lt 0 -or $index -ge $script:catalog.Count) {
-      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, 'Pick one tool.', 'Dynamo toolbox', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, '請選擇一個工具。', 'Dynamo 工具箱', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
       return
     }
     $project = $script:projectBox.Text.Trim().Trim('"')
     $extension = [System.IO.Path]::GetExtension($project)
     $isRvt = $extension -and $extension.Equals('.rvt', [System.StringComparison]::OrdinalIgnoreCase)
     if (-not $isRvt -or -not (Test-Path -LiteralPath $project -PathType Leaf)) {
-      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, 'Choose an existing .rvt file. Templates (.rte) are not opened.', 'Dynamo toolbox', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, '請選擇既有的 .rvt 檔案。不會開啟樣板 (.rte)。', 'Dynamo 工具箱', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
       return
     }
     if (Test-Revit2025Running) {
-      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, $script:RevitAlreadyRunningMessage, 'Close Revit first', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, $script:RevitAlreadyRunningMessage, '請先關閉 Revit', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
       return
     }
     try {
       & $script:journalScript -ToolId $script:catalog[$index].Id -Project $project -Launch
     } catch {
-      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, $_.Exception.Message, 'Dynamo toolbox', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      [System.Windows.Forms.MessageBox]::Show($script:toolboxForm, $_.Exception.Message, 'Dynamo 工具箱', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
       return
     }
     $script:toolboxForm.Close()
@@ -201,7 +201,7 @@ function Show-DynamoToolboxForm {
   $close = New-Object System.Windows.Forms.Button
   $close.Location = New-Object System.Drawing.Point(168, 408)
   $close.Size = New-Object System.Drawing.Size(140, 32)
-  $close.Text = '&Close'
+  $close.Text = '關閉(&C)'
   $close.Add_Click({ $script:toolboxForm.Close() })
   $form.Controls.Add($close)
 
