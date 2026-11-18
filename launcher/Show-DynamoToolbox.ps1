@@ -79,8 +79,15 @@ function Show-DynamoToolboxForm {
     return
   }
 
+  # Opt in to DPI awareness before any window exists, so Windows does not bitmap-stretch (blur) the UI.
+  if (-not ('DynamoToolboxDpi' -as [type])) {
+    Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class DynamoToolboxDpi { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); }'
+  }
+  try { [void][DynamoToolboxDpi]::SetProcessDPIAware() } catch { Write-Warning "DPI awareness not enabled: $($_.Exception.Message)" }
+
   Add-Type -AssemblyName System.Windows.Forms
   Add-Type -AssemblyName System.Drawing
+  [System.Windows.Forms.Application]::EnableVisualStyles()
 
   $fontName = 'Segoe UI'
   $installed = New-Object System.Drawing.Text.InstalledFontCollection
@@ -101,8 +108,9 @@ function Show-DynamoToolboxForm {
   $form.FormBorderStyle = 'FixedDialog'
   $form.MaximizeBox = $false
   $form.StartPosition = 'CenterScreen'
-  $form.ClientSize = New-Object System.Drawing.Size(560, 508)
   $form.Font = New-Object System.Drawing.Font($fontName, 10)
+  $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+  $form.ClientSize = New-Object System.Drawing.Size(560, 508)
 
   $intro = New-Object System.Windows.Forms.Label
   $intro.Location = New-Object System.Drawing.Point(16, 12)
