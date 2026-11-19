@@ -24,7 +24,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\launcher\Install-Dynam
    - `assign-worksets`：批次分配工作集
    - `param-tools`：Revit 參數工具
    - `excel-sync`：Excel／Revit 同步
-   - `batch-scada-setup`：批次 SCADA 設定（`BatchScadaSetup.dyn`）
+   - `batch-scada-setup`（`BatchScadaSetup.dyn`）：在 `tools.json` 標為 `"hidden": true`，不顯示在選單，仍可用 `New-DynamoJournal.ps1 -ToolId batch-scada-setup` 指定啟動。
 4. Browse 選一個已經存在的 `.rvt`。不要選 `.rte` 樣板。
 5. Launch。
 
