@@ -38,6 +38,7 @@ function Get-DynamoToolboxCatalog {
     if ([string]::IsNullOrWhiteSpace($id)) { throw 'tools.json has an entry with no id.' }
     if ($seen.ContainsKey($id)) { throw "tools.json lists ToolId '$id' more than once." }
     $seen[$id] = $true
+    if ($tool.PSObject.Properties['hidden'] -and $tool.hidden -eq $true) { continue }
     if ([string]::IsNullOrWhiteSpace($tool.name) -or [string]::IsNullOrWhiteSpace($tool.dyn)) {
       throw "tools.json entry '$id' needs a name and a dyn path."
     }
