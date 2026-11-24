@@ -21,9 +21,10 @@ def test_params_match_toolkit_dictionary():
 
 
 def test_is_scada_rack():
-    assert check_logic.is_scada_rack("SCADA_機櫃_PLC", "SCADA_機櫃")
-    assert not check_logic.is_scada_rack("Other", "SCADA_機櫃")
-    assert not check_logic.is_scada_rack(None, "SCADA_機櫃")
+    assert check_logic.is_scada_rack("SCADA_機櫃_PLC")
+    assert check_logic.is_scada_rack("SB11_RTU機櫃_600x1000x2100")
+    assert not check_logic.is_scada_rack("箱體_Dynamo建_v5")
+    assert not check_logic.is_scada_rack(None)
 
 
 def test_summarize_racks_distinguishes_missing_and_empty():

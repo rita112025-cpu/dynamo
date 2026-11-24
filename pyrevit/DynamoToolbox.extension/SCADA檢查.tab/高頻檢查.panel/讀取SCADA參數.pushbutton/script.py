@@ -41,21 +41,23 @@ def main():
     spec = check_logic.load_scada_params()
     params = spec["parameters"]
     names = [p["name"] for p in params]
-    keyword = spec["applies_to"]["family_name_contains"]
+    keyword = check_logic.RACK_KEYWORD
 
     racks = []
+    skipped = []
     collector = (FilteredElementCollector(doc)
                  .OfCategory(BuiltInCategory.OST_ElectricalEquipment)
                  .WhereElementIsNotElementType())
     for element in collector:
         fam = family_name(element)
         if not check_logic.is_scada_rack(fam, keyword):
+            skipped.append([output.linkify(element.Id), fam or u"(無族群名)"])
             continue
         values = dict((p["name"], read_value(element, p["name"], p["guid"])) for p in params)
         racks.append({"id": element.Id, "family": fam, "values": values})
 
-    if not racks:
-        forms.alert(u"目前模型找不到族群名稱含「%s」的電氣設備。" % keyword, exitscript=True)
+    if not racks and not skipped:
+        forms.alert(u"目前模型沒有電氣設備。", exitscript=True)
 
     rows, totals = check_logic.summarize_racks(racks, names)
     output.print_md(u"# SCADA 機櫃參數檢查\n模型：%s\n\n機櫃 %d 台；完整 %d 台；缺少參數 %d 項；空白 %d 項。"
@@ -65,7 +67,11 @@ def main():
         table.append([output.linkify(row["id"]), row["family"],
                       u"、".join(row["missing"]) or u"-",
                       u"、".join(row["empty"]) or u"-"])
-    output.print_table(table_data=table, columns=[u"元件", u"族群", u"缺少參數", u"空白參數"])
+    if table:
+        output.print_table(table_data=table, columns=[u"元件", u"族群", u"缺少參數", u"空白參數"])
+    if skipped:
+        output.print_md(u"## 未納入檢查的電氣設備（族群名稱不含「%s」）\n\n共 %d 個。" % (keyword, len(skipped)))
+        output.print_table(table_data=skipped, columns=[u"元件", u"族群"])
 
 
 main()

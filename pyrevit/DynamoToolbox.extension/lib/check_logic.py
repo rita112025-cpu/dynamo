@@ -18,7 +18,12 @@ def load_scada_params():
         return json.load(handle)
 
 
-def is_scada_rack(family_name, keyword):
+# Rack families in real models are not always named SCADA_機櫃_* (e.g. SB11_RTU機櫃_600x1000x2100),
+# so match any family whose name contains 機櫃 and let the parameter check report what is missing.
+RACK_KEYWORD = u"機櫃"
+
+
+def is_scada_rack(family_name, keyword=RACK_KEYWORD):
     return bool(family_name) and keyword in family_name
 
 
