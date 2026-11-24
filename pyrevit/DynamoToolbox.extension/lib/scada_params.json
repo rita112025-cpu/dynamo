@@ -1,0 +1,74 @@
+{
+  "source": "toolkit/config/parameter_dictionary.json",
+  "group": "SCADA_SoW_V6",
+  "applies_to": {
+    "category": "OST_ElectricalEquipment",
+    "family_name_contains": "SCADA_機櫃"
+  },
+  "parameters": [
+    {
+      "name": "SCADA_編號",
+      "guid": "81bdc77b-c362-4012-aa80-6edd256f9b09"
+    },
+    {
+      "name": "SCADA_期別",
+      "guid": "b1b763ae-f6db-44bf-b7a5-ad35ea29ad9c"
+    },
+    {
+      "name": "SCADA_站點",
+      "guid": "f1f6fdc5-7006-44e2-a7d0-60ae0647f0d0"
+    },
+    {
+      "name": "SCADA_建物",
+      "guid": "8a59691b-8411-4799-a4b5-693cf1661e67"
+    },
+    {
+      "name": "SCADA_房間",
+      "guid": "53413beb-fd65-4b80-8753-db471cb8319c"
+    },
+    {
+      "name": "SCADA_機櫃類型",
+      "guid": "3e00233a-044f-4b21-bca3-fa1ce26ba6e5"
+    },
+    {
+      "name": "SCADA_寬mm",
+      "guid": "e0f8b8a1-3ba8-49e3-9b11-e40b4b710d06"
+    },
+    {
+      "name": "SCADA_深mm",
+      "guid": "b9f4ce69-08e6-4908-b23b-56a384832f43"
+    },
+    {
+      "name": "SCADA_高mm",
+      "guid": "896f98f9-1b6f-4a9f-9a85-3cfa29758348"
+    },
+    {
+      "name": "SCADA_尺寸",
+      "guid": "a6d1af90-4cc8-48c0-a233-f204e0abad5b"
+    },
+    {
+      "name": "SCADA_附錄D項次",
+      "guid": "42b9f865-f078-4b52-93b3-852e19aeafa6"
+    },
+    {
+      "name": "SCADA_UPS電源110V",
+      "guid": "b662bf65-c745-4d14-beaf-4dcc180dc298"
+    },
+    {
+      "name": "SCADA_附錄F項次",
+      "guid": "aa933f19-c018-4d63-887b-d388eef2ec0a"
+    },
+    {
+      "name": "SCADA_來源文件",
+      "guid": "a26cb5cc-1c1d-400b-b011-5c77e3a44b4b"
+    },
+    {
+      "name": "SCADA_備註",
+      "guid": "4cb549c0-2004-4250-8d34-8c10252c4a4f"
+    },
+    {
+      "name": "SCADA_定位來源",
+      "guid": "82607d24-24b2-4a1f-94fe-109bfff58ad1"
+    }
+  ]
+}
