@@ -1,0 +1,90 @@
+{
+  "Uuid": "69a45b2f-174c-499d-b4c6-a7c61f90e98e",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "批次加開門線",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Dynamo for Revit 2025 - Python Script node (CPython3)\n# Stage 2: add door-swing model lines to every main cabinet family in DIR.\n#\n# Door layout (per user's CAD sketch):\n#   - one single-leaf door on EACH short face (front Y=min, back Y=max)\n#   - door width = cabinet width (X extent of the main extrusion)\n#   - both doors are right-hand (HAND): seen from in front of each door, the\n#     hinge is on the viewer's right -> front hinge at +X, back hinge at -X\n#   - door swings outward 90 deg\n#   - drawn as MODEL lines (visible in plan, 3D and elevations):\n#     open leaf line (perpendicular to face) + 90 deg arc\n# Lines go on subcategory DOOR_SUBCAT so they can be toggled in V/G.\n# Re-running is safe: existing curves on DOOR_SUBCAT are deleted first.\n# Backup files (*.0001.rfa etc.) are skipped. Files already open in Revit are skipped.\n# Each file is copied to BACKUP_DIR before it is opened/saved (Revit .000N backups\n# are NOT relied on: these families keep only one).\n# OUT = list of per-file results.\n\nimport clr\nimport os\nimport re\nimport shutil\nimport traceback\nfrom datetime import datetime\n\nclr.AddReference(\"RevitAPI\")\nclr.AddReference(\"RevitServices\")\nfrom Autodesk.Revit.DB import (\n    FilteredElementCollector, CurveElement, Extrusion, Line, Arc, XYZ, Plane,\n    SketchPlane, Transaction, GraphicsStyleType, ModelPathUtils, OpenOptions,\n)\nfrom RevitServices.Persistence import DocumentManager\n\nDIR = r\"D:\\族群_汐東縣\\SCADA_主題導覽\\12 SoW_V6_規範追溯\\有效機櫃族群_Rev006_19台\"\nDOOR_SUBCAT = \"開門線\"\nHAND = 1  # +1 = right-hand doors (hinge on viewer's right), -1 = left-hand\nONLY = []  # file names to process; empty = every main .rfa in DIR\nBACKUP_RE = re.compile(r\"\\.\\d{4}\\.rfa$\", re.IGNORECASE)\nBACKUP_DIR = os.path.join(DIR, \"_備份_\" + datetime.now().strftime(\"%Y%m%d_%H%M%S\"))\n\napp = DocumentManager.Instance.CurrentUIApplication.Application\n\n\ndef target_files():\n    return sorted(\n        os.path.join(DIR, f) for f in os.listdir(DIR)\n        if f.lower().endswith(\".rfa\") and not BACKUP_RE.search(f)\n        and (not ONLY or f in ONLY)\n    )\n\n\ndef is_open(path):\n    for d in app.Documents:\n        if d.PathName and os.path.normcase(d.PathName) == os.path.normcase(path):\n            return True\n    return False\n\n\ndef cabinet_extents(doc):\n    exts = list(FilteredElementCollector(doc).OfClass(Extrusion))\n    if not exts:\n        raise ValueError(\"no extrusion found\")\n    bbs = [e.get_BoundingBox(None) for e in exts if e.IsSolid]\n    bbs = [b for b in bbs if b is not None]\n    min_x = min(b.Min.X for b in bbs)\n    max_x = max(b.Max.X for b in bbs)\n    min_y = min(b.Min.Y for b in bbs)\n    max_y = max(b.Max.Y for b in bbs)\n    return min_x, max_x, min_y, max_y\n\n\ndef door_subcategory(doc):\n    parent = doc.OwnerFamily.FamilyCategory\n    if parent.SubCategories.Contains(DOOR_SUBCAT):\n        return parent.SubCategories.get_Item(DOOR_SUBCAT)\n    return doc.Settings.Categories.NewSubcategory(parent, DOOR_SUBCAT)\n\n\ndef door_curves(min_x, max_x, face_y, outward):\n    \"\"\"Leaf opens outward (outward = -1 front face, +1 back face).\n    Viewer outside the face looks in -outward direction; their right is X = -outward * HAND.\"\"\"\n    width = max_x - min_x\n    hinge_sign = -outward * HAND\n    hx, fx = (max_x, min_x) if hinge_sign > 0 else (min_x, max_x)\n    hinge = XYZ(hx, face_y, 0)\n    closed_tip = XYZ(fx, face_y, 0)\n    open_tip = XYZ(hx, face_y + outward * width, 0)\n    # point at 45 deg between closed and open positions\n    v1 = closed_tip.Subtract(hinge).Normalize()\n    v2 = open_tip.Subtract(hinge).Normalize()\n    mid = hinge.Add(v1.Add(v2).Normalize().Multiply(width))\n    return [Line.CreateBound(hinge, open_tip), Arc.Create(closed_tip, open_tip, mid)]\n\n\ndef process(path):\n    if is_open(path):\n        return \"SKIP (open in Revit, close it and re-run)\"\n    os.makedirs(BACKUP_DIR, exist_ok=True)\n    shutil.copy2(path, os.path.join(BACKUP_DIR, os.path.basename(path)))\n    doc = app.OpenDocumentFile(ModelPathUtils.ConvertUserVisiblePathToModelPath(path), OpenOptions())\n    try:\n        min_x, max_x, min_y, max_y = cabinet_extents(doc)\n        t = Transaction(doc, \"Add door swing lines\")\n        t.Start()\n        try:\n            sub = door_subcategory(doc)\n            style = sub.GetGraphicsStyle(GraphicsStyleType.Projection)\n            old = [c.Id for c in FilteredElementCollector(doc).OfClass(CurveElement)\n                   if c.LineStyle is not None and c.LineStyle.Id == style.Id]\n            for eid in old:\n                doc.Delete(eid)\n            sp = SketchPlane.Create(doc, Plane.CreateByNormalAndOrigin(XYZ.BasisZ, XYZ.Zero))\n            curves = door_curves(min_x, max_x, min_y, -1) + door_curves(min_x, max_x, max_y, 1)\n            for c in curves:\n                sc = doc.FamilyCreate.NewModelCurve(c, sp)\n                sc.LineStyle = style\n            t.Commit()\n        except Exception:\n            t.RollBack()\n            raise\n        doc.Save()\n        w = round((max_x - min_x) * 304.8)\n        d = round((max_y - min_y) * 304.8)\n        return \"OK {}x{} (removed {} old, added {})\".format(w, d, len(old), len(curves))\n    finally:\n        doc.Close(False)\n\n\nresults = []\nfor p in target_files():\n    name = os.path.basename(p)\n    try:\n        results.append(\"{}: {}\".format(name, process(p)))\n    except Exception:\n        results.append(\"{}: ERROR {}\".format(name, traceback.format_exc().splitlines()[-1]))\n\nOUT = results\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "c7c714782e2940b9845b132a1407d066",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "ddfe8238d41845e19fb38cfa4d5e0e8a",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    }
+  ],
+  "Connectors": [],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": null,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.2.11986",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "c7c714782e2940b9845b132a1407d066",
+        "Name": "批次加開門線",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 200.0,
+        "Y": 200.0
+      }
+    ],
+    "Annotations": [],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}

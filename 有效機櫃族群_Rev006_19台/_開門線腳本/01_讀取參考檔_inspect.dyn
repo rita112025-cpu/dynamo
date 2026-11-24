@@ -1,0 +1,90 @@
+{
+  "Uuid": "93163b6c-be51-40c6-b30a-dfe0f88a0a78",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "讀取參考檔_開門線",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Dynamo for Revit 2025 - Python Script node (CPython3)\n# Stage 1: read-only inspection of the reference family and two target families.\n# Opens each .rfa in the background, dumps curves / forms / ref planes / parameters\n# to JSON, then closes WITHOUT saving. No input ports needed.\n# OUT = path of the JSON report.\n\nimport clr\nimport json\nimport os\nimport traceback\n\nclr.AddReference(\"RevitAPI\")\nclr.AddReference(\"RevitServices\")\nfrom Autodesk.Revit.DB import (\n    FilteredElementCollector, CurveElement, GenericForm, ReferencePlane,\n    FamilyInstance, Dimension, Arc, BuiltInParameter, View, ModelPathUtils,\n    OpenOptions, StorageType, Element,\n)\nfrom RevitServices.Persistence import DocumentManager\n\nFT2MM = 304.8\nREF = r\"D:\\族群_汐東縣\\Rita\\族群們\\SCADA_機櫃_GEN-RJ45-PP-01.rfa\"\nDIR = r\"D:\\族群_汐東縣\\SCADA_主題導覽\\12 SoW_V6_規範追溯\\有效機櫃族群_Rev006_19台\"\nTARGETS = [\n    os.path.join(DIR, \"SB10_RTU機櫃_600x1000x2100.rfa\"),\n    os.path.join(DIR, \"PDU_獨立機櫃_600x800x2100.rfa\"),\n]\nOUT_PATH = os.path.join(DIR, \"_開門線腳本\", \"inspect_result.json\")\n\napp = DocumentManager.Instance.CurrentUIApplication.Application\n\n\ndef safe(fn):\n    try:\n        return fn()\n    except Exception:\n        return None\n\n\ndef ename(e):\n    # pythonnet cannot read .Name on some Element subclasses; fall back to base getter\n    if e is None:\n        return None\n    try:\n        return e.Name\n    except Exception:\n        return safe(lambda: Element.Name.GetValue(e))\n\n\ndef mm(v):\n    return round(v * FT2MM, 2)\n\n\ndef pt(p):\n    return [mm(p.X), mm(p.Y), mm(p.Z)]\n\n\ndef curve_info(c):\n    d = {\"type\": c.GetType().Name}\n    if c.IsBound:\n        d[\"start\"] = pt(c.GetEndPoint(0))\n        d[\"end\"] = pt(c.GetEndPoint(1))\n    if isinstance(c, Arc):\n        d[\"center\"] = pt(c.Center)\n        d[\"radius\"] = mm(c.Radius)\n        d[\"normal\"] = [round(c.Normal.X, 4), round(c.Normal.Y, 4), round(c.Normal.Z, 4)]\n    return d\n\n\ndef visibility(el):\n    try:\n        v = el.GetVisibility()\n    except Exception:\n        return None\n    keys = [\"IsShownInCoarse\", \"IsShownInMedium\", \"IsShownInFine\",\n            \"IsShownInFrontBack\", \"IsShownInLeftRight\", \"IsShownInTopBottom\",\n            \"IsShownInPlanRCPCut\", \"IsShownOnlyWhenCut\"]\n    d = {}\n    for k in keys:\n        try:\n            d[k] = getattr(v, k)\n        except Exception:\n            pass\n    try:\n        d[\"VisibilityType\"] = str(v.VisibilityType)\n    except Exception:\n        pass\n    return d\n\n\ndef visible_param(doc, el):\n    p = el.get_Parameter(BuiltInParameter.IS_VISIBLE_PARAM)\n    if p is None:\n        return None\n    d = {\"value\": p.AsInteger()}\n    try:\n        fp = doc.FamilyManager.GetAssociatedFamilyParameter(p)\n        if fp is not None:\n            d[\"associated\"] = fp.Definition.Name\n    except Exception:\n        pass\n    return d\n\n\ndef view_name(doc, el):\n    vid = el.OwnerViewId\n    if vid is None or vid.Value < 0:\n        return None\n    v = doc.GetElement(vid)\n    return ename(v)\n\n\ndef bbox(el):\n    bb = el.get_BoundingBox(None)\n    if bb is None:\n        return None\n    return {\"min\": pt(bb.Min), \"max\": pt(bb.Max)}\n\n\ndef param_value(doc, fp):\n    t = doc.FamilyManager.CurrentType\n    if t is None:\n        return None\n    st = fp.StorageType\n    try:\n        if st == StorageType.Double:\n            v = t.AsDouble(fp)\n            return None if v is None else round(v * FT2MM, 2)\n        if st == StorageType.Integer:\n            return t.AsInteger(fp)\n        if st == StorageType.String:\n            return t.AsString(fp)\n        if st == StorageType.ElementId:\n            eid = t.AsElementId(fp)\n            return None if eid is None else eid.Value\n    except Exception:\n        return None\n    return None\n\n\ndef inspect(path):\n    res = {\"file\": path}\n    opts = OpenOptions()\n    doc = app.OpenDocumentFile(ModelPathUtils.ConvertUserVisiblePathToModelPath(path), opts)\n    try:\n        res[\"category\"] = doc.OwnerFamily.FamilyCategory.Name if doc.OwnerFamily.FamilyCategory else None\n        fm = doc.FamilyManager\n        res[\"types\"] = [t.Name for t in fm.Types]\n        res[\"parameters\"] = []\n        for fp in fm.Parameters:\n            res[\"parameters\"].append({\n                \"name\": fp.Definition.Name,\n                \"instance\": fp.IsInstance,\n                \"formula\": fp.Formula,\n                \"value\": param_value(doc, fp),\n            })\n\n        res[\"views\"] = [\n            {\"name\": ename(v), \"type\": str(v.ViewType)}\n            for v in FilteredElementCollector(doc).OfClass(View)\n            if not v.IsTemplate\n        ]\n\n        res[\"ref_planes\"] = []\n        for rp in FilteredElementCollector(doc).OfClass(ReferencePlane):\n            res[\"ref_planes\"].append({\n                \"id\": rp.Id.Value, \"name\": ename(rp),\n                \"bubble\": pt(rp.BubbleEnd), \"free\": pt(rp.FreeEnd),\n                \"normal\": [round(rp.Normal.X, 4), round(rp.Normal.Y, 4), round(rp.Normal.Z, 4)],\n            })\n\n        res[\"curves\"] = []\n        for ce in FilteredElementCollector(doc).OfClass(CurveElement):\n            try:\n                ls = ename(ce.LineStyle)\n            except Exception:\n                ls = None\n            res[\"curves\"].append({\n                \"id\": ce.Id.Value,\n                \"class\": ce.GetType().Name,\n                \"curve\": curve_info(ce.GeometryCurve),\n                \"line_style\": ls,\n                \"view\": view_name(doc, ce),\n                \"sketch_plane\": ename(ce.SketchPlane),\n                \"visibility\": visibility(ce),\n                \"visible_param\": visible_param(doc, ce),\n            })\n\n        res[\"forms\"] = []\n        for f in FilteredElementCollector(doc).OfClass(GenericForm):\n            sub = None\n            try:\n                sub = f.Subcategory.Name if f.Subcategory is not None else None\n            except Exception:\n                pass\n            res[\"forms\"].append({\n                \"id\": f.Id.Value, \"class\": f.GetType().Name, \"name\": ename(f),\n                \"subcategory\": sub, \"solid\": f.IsSolid, \"bbox\": bbox(f),\n                \"visibility\": visibility(f), \"visible_param\": visible_param(doc, f),\n            })\n\n        res[\"nested\"] = []\n        for fi in FilteredElementCollector(doc).OfClass(FamilyInstance):\n            res[\"nested\"].append({\n                \"id\": fi.Id.Value, \"family\": ename(fi.Symbol.Family),\n                \"type\": ename(fi.Symbol), \"bbox\": bbox(fi),\n                \"view\": view_name(doc, fi),\n                \"visible_param\": visible_param(doc, fi),\n            })\n\n        res[\"dimensions\"] = []\n        for d in FilteredElementCollector(doc).OfClass(Dimension):\n            lbl = None\n            try:\n                lbl = d.FamilyLabel.Definition.Name if d.FamilyLabel is not None else None\n            except Exception:\n                pass\n            res[\"dimensions\"].append({\n                \"id\": d.Id.Value, \"label\": lbl, \"view\": view_name(doc, d),\n                \"refs\": [r.ElementId.Value for r in d.References],\n                \"value\": mm(d.Value) if d.Value is not None else None,\n            })\n    finally:\n        doc.Close(False)\n    return res\n\n\nreport = []\nfor p in [REF] + TARGETS:\n    try:\n        report.append(inspect(p))\n    except Exception:\n        report.append({\"file\": p, \"error\": traceback.format_exc()})\n\nwith open(OUT_PATH, \"w\", encoding=\"utf-8\") as fh:\n    json.dump(report, fh, ensure_ascii=False, indent=1)\n\nOUT = OUT_PATH\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "41356214e0ab4db4829af7a2d3128053",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "3c2dc61791c448178c5829feff0b3475",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    }
+  ],
+  "Connectors": [],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": null,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.2.11986",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "41356214e0ab4db4829af7a2d3128053",
+        "Name": "讀取參考檔_開門線",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 200.0,
+        "Y": 200.0
+      }
+    ],
+    "Annotations": [],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}
