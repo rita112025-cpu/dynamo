@@ -1,0 +1,28 @@
+{
+  "_說明": "依專案調整。rules 依序比對，第一個命中者生效；pattern 為不分大小寫的 regex，比對範圍＝測試名稱＋模型檔名＋路徑節點＋物件名稱。",
+  "station_rules": [
+    {"pattern": "\\bS[A-Z]\\d{1,2}\\b", "use_match": true},
+    {"pattern": "汐止", "value": "汐止"},
+    {"pattern": "東湖", "value": "東湖"}
+  ],
+  "station_default": "未分類",
+  "system_rules": [
+    {"pattern": "SCADA|BASECOM|機櫃|RACK", "value": "SCADA"},
+    {"pattern": "(^|[_\\-. ])(EL|ELEC|E)([_\\-. ]|$)|電力|電氣|CABLE TRAY|電纜", "value": "電力"},
+    {"pattern": "(^|[_\\-. ])(ME|MEP|HVAC|M)([_\\-. ]|$)|空調|風管|DUCT", "value": "空調"},
+    {"pattern": "(^|[_\\-. ])(PL|PLB|P)([_\\-. ]|$)|給排水|PIPE", "value": "給排水"},
+    {"pattern": "(^|[_\\-. ])(ST|STR|S)([_\\-. ]|$)|結構|STRUCT", "value": "結構"},
+    {"pattern": "(^|[_\\-. ])(AR|ARC|A)([_\\-. ]|$)|建築|ARCH", "value": "建築"},
+    {"pattern": "(^|[_\\-. ])(SIG)([_\\-. ]|$)|號誌", "value": "號誌"}
+  ],
+  "system_default": "未分類",
+  "status_map": {
+    "new": "待處理",
+    "active": "處理中",
+    "reviewed": "已審閱",
+    "approved": "已核可",
+    "resolved": "已解決"
+  },
+  "open_statuses": ["待處理", "處理中"],
+  "manual_columns": ["負責人", "送審狀態", "備註"]
+}
