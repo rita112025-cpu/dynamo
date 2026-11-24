@@ -33,4 +33,5 @@ cd pyrevit; python -m pytest tests
 
 - 腳本刻意相容 IronPython 2.7 與 CPython 3（無 f-string），未加 `#! python3`，走 pyRevit 預設引擎。
 - 若要把既有 Dynamo CPython 腳本移植進來，要核對：pyRevit CPython 為 3.12（pythonnet）、不支援具名索引器（用 `get_Parameter()`）、一個 Revit session 只有一個直譯器（重載不會重啟）。
-- **以下未在 Revit 2025 實測**：按鈕載入、`RBS_CABLETRAY_WIDTH_PARAM`／`HEIGHT_PARAM` 在配件上多半無值（顯示 `-`）、`ALL_MODEL_TYPE_NAME` 取類型名、`output.linkify` 單一 ElementId。pyRevit 文件中 `.tab/.panel` 命名、icon.png 規格、`extension.json` 欄位也未逐頁查證，圖示尚未提供（按鈕先以文字顯示）。
+- **已實測（2026-11-24，Revit 2025.5＋pyRevit 7.1.0，模型 DN-ESC-SB11-0000-v2.2）**：頁籤與兩顆按鈕載入；盤點電纜架在 3D 視圖得 9 段、8 個配件、24.59 m（小計加總一致），配件尺寸如預期顯示 `-`；SCADA 參數檢查找到 1 台機櫃、16 項參數皆有值，`linkify` 正常。
+- **尚未實測**：缺少／空白參數的顯示（只有單元測試涵蓋）、非圖形視圖（明細表、圖紙）的提示、多台機櫃的模型。icon.png 規格未查證，圖示尚未提供（按鈕先以文字顯示）。
