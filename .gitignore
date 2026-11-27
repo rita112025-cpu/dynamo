@@ -5,3 +5,6 @@ __pycache__/
 *.0001.rvt
 _toolkit_git_backup/
 _acl_reports/
+
+# 02_批次加開門線.py 每次執行產生的族群備份（舊版保留在 git 歷史 5fedba3）
+_備份_*/
