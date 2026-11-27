@@ -84,6 +84,12 @@ def decide(current, value):
     return "keep"
 
 
+# ---- Revit helpers ----
+NS = "BatchScada_" + uuid.uuid4().hex  # unique namespace so re-runs don't clash
+fail_msgs = []
+
+
+# >>> shared: batch_common (edit batch_common/batch_common.py, then run batch_common/sync_shared.py)
 def norm(p):
     return os.path.normcase(os.path.abspath(p))
 
@@ -102,7 +108,6 @@ def to_list(x):
     return [str(p) for p in x if p]
 
 
-# ---- Revit helpers ----
 def doc_paths(d):
     """File path of a document plus its central model path (if workshared)."""
     paths = set()
@@ -117,17 +122,6 @@ def doc_paths(d):
         except Exception:
             pass
     return paths
-
-
-NS = "BatchScada_" + uuid.uuid4().hex  # unique namespace so re-runs don't clash
-fail_msgs = []
-
-
-class UseDestinationTypes(IDuplicateTypeNamesHandler):
-    __namespace__ = NS
-
-    def OnDuplicateTypeNamesFound(self, args):
-        return DuplicateTypeAction.UseDestinationTypes
 
 
 class SuppressWarnings(IFailuresPreprocessor):
@@ -152,6 +146,25 @@ def version_ok(info):
     return str(app.VersionNumber) in str(fmt)
 
 
+def remove_temp_local(local):
+    if not local:
+        return
+    try:
+        if os.path.exists(local):
+            os.remove(local)
+        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)
+    except Exception:
+        pass
+# <<< shared: batch_common
+
+
+class UseDestinationTypes(IDuplicateTypeNamesHandler):
+    __namespace__ = NS
+
+    def OnDuplicateTypeNamesFound(self, args):
+        return DuplicateTypeAction.UseDestinationTypes
+
+
 def open_target(path, info):
     """Return (document, temp local path or None). All worksets are opened so that
     no element is silently missed."""
@@ -169,17 +182,6 @@ def open_target(path, info):
             WorksharingUtils.CreateNewLocal(mp, local_mp)
             mp = local_mp
     return app.OpenDocumentFile(mp, opts), local
-
-
-def remove_temp_local(local):
-    if not local:
-        return
-    try:
-        if os.path.exists(local):
-            os.remove(local)
-        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)
-    except Exception:
-        pass
 
 
 def commit_with_handling(t):

@@ -23,6 +23,11 @@ if isinstance(names, str):
 names = [str(n) for n in names]
 
 
+NS = "BatchVT_" + uuid.uuid4().hex  # unique namespace so re-runs don't clash
+fail_msgs = []
+
+
+# >>> shared: batch_common (edit batch_common/batch_common.py, then run batch_common/sync_shared.py)
 def norm(p):
     return os.path.normcase(os.path.abspath(p))
 
@@ -57,17 +62,6 @@ def doc_paths(d):
     return paths
 
 
-NS = "BatchVT_" + uuid.uuid4().hex  # unique namespace so re-runs don't clash
-fail_msgs = []
-
-
-class UseDestinationTypes(IDuplicateTypeNamesHandler):
-    __namespace__ = NS
-
-    def OnDuplicateTypeNamesFound(self, args):
-        return DuplicateTypeAction.UseDestinationTypes
-
-
 class SuppressWarnings(IFailuresPreprocessor):
     """Delete warnings silently; roll back on errors instead of showing a dialog."""
     __namespace__ = NS
@@ -90,6 +84,25 @@ def version_ok(info):
     return str(app.VersionNumber) in str(fmt)
 
 
+def remove_temp_local(local):
+    if not local:
+        return
+    try:
+        if os.path.exists(local):
+            os.remove(local)
+        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)
+    except Exception:
+        pass
+# <<< shared: batch_common
+
+
+class UseDestinationTypes(IDuplicateTypeNamesHandler):
+    __namespace__ = NS
+
+    def OnDuplicateTypeNamesFound(self, args):
+        return DuplicateTypeAction.UseDestinationTypes
+
+
 def open_target(path, info):
     """Return (document, temp local path or None)."""
     mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(path)
@@ -106,17 +119,6 @@ def open_target(path, info):
             WorksharingUtils.CreateNewLocal(mp, local_mp)
             mp = local_mp
     return app.OpenDocumentFile(mp, opts), local
-
-
-def remove_temp_local(local):
-    if not local:
-        return
-    try:
-        if os.path.exists(local):
-            os.remove(local)
-        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)
-    except Exception:
-        pass
 
 
 def copy_templates(tdoc, templates):
