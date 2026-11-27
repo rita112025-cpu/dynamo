@@ -73,6 +73,11 @@ def parse_rule(text):
 # ---- end pure helpers ----
 
 
+NS = "BatchWorkset_" + uuid.uuid4().hex  # unique namespace so re-runs don't clash
+fail_msgs = []
+
+
+# >>> shared: batch_common (edit batch_common/batch_common.py, then run batch_common/sync_shared.py)
 def norm(p):
     return os.path.normcase(os.path.abspath(p))
 
@@ -107,10 +112,6 @@ def doc_paths(d):
     return paths
 
 
-NS = "BatchWorkset_" + uuid.uuid4().hex  # unique namespace so re-runs don't clash
-fail_msgs = []
-
-
 class SuppressWarnings(IFailuresPreprocessor):
     """Delete warnings silently; roll back on errors instead of showing a dialog."""
     __namespace__ = NS
@@ -133,6 +134,18 @@ def version_ok(info):
     return str(app.VersionNumber) in str(fmt)
 
 
+def remove_temp_local(local):
+    if not local:
+        return
+    try:
+        if os.path.exists(local):
+            os.remove(local)
+        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)
+    except Exception:
+        pass
+# <<< shared: batch_common
+
+
 def open_target(path, info, write):
     """Return (document, temp local path or None). All worksets are opened so that no element
     is silently missed. A dry run is opened detached: no local file, central never touched."""
@@ -153,17 +166,6 @@ def open_target(path, info, write):
                 WorksharingUtils.CreateNewLocal(mp, local_mp)
                 mp = local_mp
     return app.OpenDocumentFile(mp, opts), local
-
-
-def remove_temp_local(local):
-    if not local:
-        return
-    try:
-        if os.path.exists(local):
-            os.remove(local)
-        shutil.rmtree(os.path.splitext(local)[0] + '_backup', ignore_errors=True)
-    except Exception:
-        pass
 
 
 def save(tdoc):
