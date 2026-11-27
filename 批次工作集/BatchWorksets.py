@@ -9,6 +9,9 @@
 #        The optional condition (parameter = value, case-insensitive) limits the rule to the
 #        elements that carry that value, so other disciplines' elements in the same file are
 #        left alone. Alternative parameter names are separated by "/": "服務類型/Service Type=SCADA".
+#        A name written as a BuiltInParameter (upper case, e.g. RBS_CTC_SERVICE_TYPE) is read with
+#        get_Parameter; use it for built-in parameters, because the name lookup can fail for them
+#        (Revit 2025 zh-TW shows the service type as "服務類型:", so "服務類型" is not found).
 # IN[2]: True  = write and synchronize each file
 #        False = dry run: each file is opened detached (nothing is saved, central is not touched)
 #
@@ -37,13 +40,13 @@ RUN = bool(IN[2]) if len(IN) > 2 else False
 
 # Used when IN[1] is empty. Edit the workset names to match your project standard.
 DEFAULT_RULES = [
-    "OST_Conduit | 服務類型/Service Type=SCADA -> SCADA_管線",
-    "OST_ConduitFitting | 服務類型/Service Type=SCADA -> SCADA_管線",
-    "OST_CableTray | 服務類型/Service Type=SCADA -> SCADA_管線",
-    "OST_CableTrayFitting | 服務類型/Service Type=SCADA -> SCADA_管線",
-    "OST_ElectricalEquipment | 備註/Comments=SCADA -> SCADA_設備",
-    "OST_ElectricalFixtures | 備註/Comments=SCADA -> SCADA_設備",
-    "OST_Wire | 備註/Comments=SCADA -> SCADA_設備",
+    "OST_Conduit | RBS_CTC_SERVICE_TYPE/服務類型/Service Type=SCADA -> SCADA_管線",
+    "OST_ConduitFitting | RBS_CTC_SERVICE_TYPE/服務類型/Service Type=SCADA -> SCADA_管線",
+    "OST_CableTray | RBS_CTC_SERVICE_TYPE/服務類型/Service Type=SCADA -> SCADA_管線",
+    "OST_CableTrayFitting | RBS_CTC_SERVICE_TYPE/服務類型/Service Type=SCADA -> SCADA_管線",
+    "OST_ElectricalEquipment | ALL_MODEL_INSTANCE_COMMENTS/備註/Comments=SCADA -> SCADA_設備",
+    "OST_ElectricalFixtures | ALL_MODEL_INSTANCE_COMMENTS/備註/Comments=SCADA -> SCADA_設備",
+    "OST_Wire | ALL_MODEL_INSTANCE_COMMENTS/備註/Comments=SCADA -> SCADA_設備",
 ]
 # Safety: only files whose name contains this text are processed ("" = no check).
 FILE_NAME_MUST_CONTAIN = "-ESC-"
@@ -184,9 +187,24 @@ def eid(el):
     return id_int(el.Id)
 
 
+BIP_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]+$")
+
+
+def find_param(el, name):
+    """BuiltInParameter name (e.g. RBS_CTC_SERVICE_TYPE) -> get_Parameter, else LookupParameter."""
+    if BIP_NAME_RE.match(name):
+        bip = getattr(BuiltInParameter, name, None)
+        if bip is not None:
+            try:
+                return el.get_Parameter(bip)
+            except Exception:
+                return None
+    return el.LookupParameter(name)
+
+
 def text_param(el, names):
     for n in names:
-        p = el.LookupParameter(n)
+        p = find_param(el, n)
         if p is not None:
             if p.StorageType == StorageType.String:
                 return (p.AsString() or "").strip()
