@@ -86,6 +86,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\launcher\Install-Dynam
    - 第一行是 `Source templates (1): SCADA`
    - 每個車站檔一行 `[DRY RUN]`
    - 若出現 `NOT FOUND in source`，表示目前開的檔案沒有 `SCADA` 樣板，改開正確的來源檔。
+   - 檔名不含 `-ESC-` 的檔案會顯示 `[SKIP file name has no '-ESC-']`，這是防呆（2026-11-27 起此工具也有）。
 6. 開關改 **True**，執行。每個檔案應顯示 `[OK]` 與 `added: SCADA`（已有同名樣板則是 `overwritten: SCADA`）。
 
 ## 步驟二：填 SCADA 參數
@@ -120,7 +121,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\launcher\Install-Dynam
    | 電管、電管配件、電纜架、電纜架配件 | 服務類型 = SCADA | `SCADA_管線` |
    | 電氣設備、電氣裝置、電線 | 備註 = SCADA | `SCADA_設備` |
 
-   要自訂，每條規則一行文字：`類別 | 參數名=值 -> 工作集名稱`，例如 `"OST_Conduit | 服務類型/Service Type=SCADA -> SCADA_管線"`。
+   要自訂，每條規則一行文字：`類別 | 參數名=值 -> 工作集名稱`，例如 `"OST_Conduit | RBS_CTC_SERVICE_TYPE/服務類型=SCADA -> SCADA_管線"`。
+
+   **內建參數請寫 BuiltInParameter 名稱**（全大寫，如 `RBS_CTC_SERVICE_TYPE`、`ALL_MODEL_INSTANCE_COMMENTS`）。2026-11-09 探針實測：Revit 2025 中文介面的服務類型名稱是「服務類型:」（含冒號），用「服務類型」或「Service Type」查不到。2026-11-27 前的版本只用名稱查找，推測電管、電纜架這 4 條預設規則會全部判為「不符條件」（未在正式車站檔試跑確認）；現已改為先查 BuiltInParameter、再用名稱備援。
 3. Directory Path 選資料夾，開關 **False** 試跑（檔案以分離方式開啟，不存檔、不動中央檔），檢查每檔要搬的數量。
 4. 數量合理後改 **True**：工作集不存在會自動建立；已在目標工作集的不動；被別人借用的圖元、被別人借出的目標工作集會略過並列在報告。
 5. 非工作共享檔會被略過，不會被改成工作共享。

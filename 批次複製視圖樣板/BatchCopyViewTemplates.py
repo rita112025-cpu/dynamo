@@ -21,6 +21,8 @@ RUN = bool(IN[2]) if len(IN) > 2 else False
 if isinstance(names, str):
     names = [names]
 names = [str(n) for n in names]
+# Safety: only files whose name contains this text are processed ("" = no check).
+FILE_NAME_MUST_CONTAIN = "-ESC-"
 
 
 def norm(p):
@@ -208,6 +210,9 @@ if templates:
         # Close Dynamo's own transaction before opening other documents
         TransactionManager.Instance.ForceCloseTransaction()
     for p in targets:
+        if FILE_NAME_MUST_CONTAIN and FILE_NAME_MUST_CONTAIN.upper() not in os.path.basename(p).upper():
+            report.append("[SKIP file name has no '%s' - not a SCADA file] %s" % (FILE_NAME_MUST_CONTAIN, p))
+            continue
         if norm(p) in open_paths:
             report.append("[SKIP already open or loaded as link - unload it first] " + p)
             continue
